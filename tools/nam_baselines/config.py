@@ -19,7 +19,7 @@ class NamBaselineConfig:
     producer_upload_workers: int = 4
     producer_max_pending: int = 8
     bestia_root: Path = Path("/home/ubuntu/top-arena-nam-a2")
-    bestia_gpus: tuple[int, int] = (2, 3)
+    bestia_gpus: tuple[int, int] = (0, 2)
     bestia_inference_workers: int = 4
     poll_seconds: int = 10
 

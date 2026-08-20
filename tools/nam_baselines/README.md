@@ -7,8 +7,9 @@ This is the streaming 480-model baseline pipeline for TOP Arena:
 2. Four upload workers send each PCM-24 FLAC capture to S3. A ready-marker JSON is
    published only after its wet audio is durable.
 3. The bestia service discovers ready markers continuously. Two trainer threads are
-   pinned to physical GPUs 2 and 3 and train official NAM 0.13 A2 Full WaveNets for
-   exactly 200 epochs. GPUs 0 and 1 remain untouched.
+   assigned two explicitly reserved physical GPUs and train official NAM 0.13 A2 Full
+   WaveNets for exactly 200 epochs. Each worker waits whenever its GPU is occupied by
+   an existing workload instead of competing for it.
 4. Four CPU inference workers render the existing 50 normalized dry FLACs through
    each trained model while the GPU trainers continue with later positions.
 5. The model, exact configs, training log, 50 NAM FLACs, and a metadata document

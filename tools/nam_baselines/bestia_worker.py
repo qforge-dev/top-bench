@@ -644,7 +644,7 @@ def main() -> None:
     parser.add_argument("--nam-bin", type=Path, required=True)
     parser.add_argument("--nam-python", type=Path, required=True)
     parser.add_argument("--repo", type=Path, required=True)
-    parser.add_argument("--gpus", default="2,3")
+    parser.add_argument("--gpus", default="0,2")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--inference-workers", type=int, default=4)
     parser.add_argument("--poll-seconds", type=int, default=10)

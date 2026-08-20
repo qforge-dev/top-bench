@@ -9,7 +9,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/top-bench
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/ubuntu/top-bench/.venv/bin/python /home/ubuntu/top-bench/tools/nam_baselines/bestia_worker.py --root /home/ubuntu/top-arena-nam-a2 --bucket qlamp-training-artifacts-088543363904 --prefix parametric-amplifier/public/top-arena/reference-corpus/v1/nam-a2-full/v1 --nam-bin /opt/dlami/nvme/nam-venv/bin/nam-full --nam-python /opt/dlami/nvme/nam-venv/bin/python --repo /home/ubuntu/top-bench --gpus 2,3 --epochs 200 --inference-workers 4 --poll-seconds 10
+ExecStart=/home/ubuntu/top-bench/.venv/bin/python /home/ubuntu/top-bench/tools/nam_baselines/bestia_worker.py --root /home/ubuntu/top-arena-nam-a2 --bucket qlamp-training-artifacts-088543363904 --prefix parametric-amplifier/public/top-arena/reference-corpus/v1/nam-a2-full/v1 --nam-bin /opt/dlami/nvme/nam-venv/bin/nam-full --nam-python /opt/dlami/nvme/nam-venv/bin/python --repo /home/ubuntu/top-bench --gpus 0,2 --epochs 200 --inference-workers 4 --poll-seconds 10
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
