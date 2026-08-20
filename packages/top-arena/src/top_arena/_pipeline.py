@@ -6,13 +6,14 @@ import asyncio
 import hashlib
 import inspect
 import os
-import shutil
 import time
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+import soundfile as sf
 
 from top_arena._models import (
     BenchmarkCase,
@@ -219,12 +220,11 @@ class BenchmarkRun:
     ) -> Path:
         safe_run_id = hashlib.sha256(run_id.encode()).hexdigest()[:20]
         safe_case_id = hashlib.sha256(case.id.encode()).hexdigest()[:20]
-        suffix = output_path.suffix or ".wav"
-        destination = self._cache_dir / "pending-uploads" / safe_run_id / f"{safe_case_id}{suffix}"
+        destination = self._cache_dir / "pending-uploads" / safe_run_id / f"{safe_case_id}.flac"
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.part")
         try:
-            _ = await asyncio.to_thread(shutil.copyfile, output_path, temporary_path)
+            await asyncio.to_thread(_transcode_to_flac, output_path, temporary_path)
             await asyncio.to_thread(os.replace, temporary_path, destination)
         except BaseException:
             with suppress(OSError):
@@ -304,3 +304,22 @@ def _resolve_output_path(output: Path | str, case_id: str) -> Path:
         msg = f"model callback returned a missing file for case {case_id!r}: {output_path}"
         raise FileNotFoundError(msg)
     return output_path
+
+
+def _transcode_to_flac(source: Path, destination: Path) -> None:
+    with (
+        sf.SoundFile(source) as input_audio,
+        sf.SoundFile(
+            destination,
+            mode="w",
+            samplerate=input_audio.samplerate,
+            channels=input_audio.channels,
+            format="FLAC",
+            subtype="PCM_24",
+        ) as output_audio,
+    ):
+        while True:
+            block = input_audio.read(65_536, dtype="float32", always_2d=True)
+            if len(block) == 0:
+                break
+            _ = output_audio.write(block)

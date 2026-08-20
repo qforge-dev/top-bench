@@ -110,6 +110,12 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             leaderboard = (await client.get("/api/v1/leaderboard")).json()
+            candidate = await client.get(
+                f"/api/v1/runs/{result.run_id}/cases/{cases[0].id}/audio/candidate"
+            )
+            candidate.raise_for_status()
+            assert candidate.headers["content-type"] == "audio/flac"
+            assert candidate.content.startswith(b"fLaC")
         failed_snapshot = next(
             run for run in leaderboard["runs"] if run["name"] == "sdk-callback-failure"
         )

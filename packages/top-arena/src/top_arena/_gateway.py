@@ -130,7 +130,7 @@ class HttpBenchmarkGateway:
             (f"api/v1/runs/{quote(run_id, safe='')}/cases/{quote(case_id, safe='')}/audio"),
             params={"realtime_x": realtime_x},
             content=_file_chunks(wet_path),
-            headers={"content-type": "audio/wav"},
+            headers={"content-type": "audio/flac"},
         )
         _ = response.raise_for_status()
 

@@ -57,9 +57,10 @@ print(result)
 ```
 
 Use `await run.run_async(...)` inside an existing async application. A callback may be
-synchronous or asynchronous and must return a path to its wet WAV. `run_concurrency`
-defaults to one because many GPU models are not safe to invoke concurrently; increase it
-when the model supports parallel calls.
+synchronous or asynchronous and may return any SoundFile-supported audio path, including
+WAV or FLAC. The client streams that output into PCM-24 FLAC before upload.
+`run_concurrency` defaults to one because many GPU models are not safe to invoke
+concurrently; increase it when the model supports parallel calls.
 
 The client uses bounded download → inference → upload queues. Each stage overlaps the
 others, dry files are cached by content hash, and every stage transition is sent to the

@@ -1095,12 +1095,13 @@ wheels = [
 
 [[package]]
 name = "top-arena"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/top-arena" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "platformdirs" },
+    { name = "soundfile" },
 ]
 
 [package.metadata]
@@ -1108,6 +1109,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.14.2,<5" },
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "platformdirs", specifier = ">=4.4.0,<5" },
+    { name = "soundfile", specifier = ">=0.14.0,<0.15" },
 ]
 
 [[package]]

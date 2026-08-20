@@ -9,8 +9,9 @@ uv add "top-arena @ git+https://github.com/qforge-dev/top-bench.git@main#subdire
 ```
 
 Create one run and pass it a synchronous or asynchronous function that writes a wet
-WAV file. The SDK caches dry audio and overlaps its bounded download, inference, and
-upload stages.
+audio file supported by SoundFile, such as WAV or FLAC. Before upload, the SDK streams
+that output into PCM-24 FLAC. It caches dry audio and overlaps its bounded download,
+inference, and upload stages.
 
 ```python
 from pathlib import Path
@@ -32,7 +33,7 @@ run = benchmark.create(
 
 
 async def model(dry_audio: Path, positions: tuple[tuple[float, ...], ...]) -> Path:
-    # Run your model and return the path of its wet WAV output.
+    # Return any SoundFile-supported wet audio; the SDK uploads PCM-24 FLAC.
     return await render_wet_audio(dry_audio, positions)
 
 

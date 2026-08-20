@@ -43,6 +43,7 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
         if request.url.path == "/api/v1/runs/run-1/cases/case-1/audio":
             assert request.url.params["realtime_x"] == "2.5"
             assert request.content == b"wet audio"
+            assert request.headers["content-type"] == "audio/flac"
             return httpx.Response(202, json={"status": "accepted"})
         if request.url.path == "/api/v1/runs/run-1/finish":
             return httpx.Response(202, json={"status": "processing"})
@@ -79,7 +80,7 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     dry_path = tmp_path / "dry.wav"
     await gateway.download_dry(case, dry_path)
     await gateway.emit_event(run_id, "download.completed", case.id)
-    wet_path = tmp_path / "wet.wav"
+    wet_path = tmp_path / "wet.flac"
     wet_path.write_bytes(b"wet audio")
     await gateway.upload_wet(run_id, case.id, wet_path, 2.5)
     await gateway.finish_run(run_id)

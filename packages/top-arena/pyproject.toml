@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "top-arena"
-version = "0.1.0"
+version = "0.2.0"
 description = "Typed, streaming client for the Top Arena audio-model benchmark"
 readme = "README.md"
 license = "MIT"
@@ -13,4 +13,5 @@ dependencies = [
   "anyio>=4.14.2,<5",
   "httpx>=0.28.1,<0.29",
   "platformdirs>=4.4.0,<5",
+  "soundfile>=0.14.0,<0.15",
 ]

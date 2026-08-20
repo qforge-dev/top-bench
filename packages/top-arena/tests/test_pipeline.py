@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
 from top_arena._gateway import BenchmarkGateway
 from top_arena._models import (
     BenchmarkCase,
@@ -24,6 +26,7 @@ class FakeGateway(BenchmarkGateway):
     cases: tuple[BenchmarkCase, ...]
     downloaded: list[str] = field(default_factory=list)
     uploaded: list[str] = field(default_factory=list)
+    uploaded_formats: list[tuple[str, str, str, str, int]] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
     last_download_finished_at: float = 0.0
     first_upload_finished_at: float | None = None
@@ -38,7 +41,13 @@ class FakeGateway(BenchmarkGateway):
 
     async def download_dry(self, case: BenchmarkCase, destination: Path) -> None:
         await asyncio.sleep(0.08 if case.id == "slow" else 0.005)
-        destination.write_bytes(case.id.encode())
+        sf.write(
+            destination,
+            np.zeros(480, dtype=np.float32),
+            48_000,
+            format="WAV",
+            subtype="PCM_24",
+        )
         self.downloaded.append(case.id)
         self.last_download_finished_at = time.monotonic()
 
@@ -59,7 +68,11 @@ class FakeGateway(BenchmarkGateway):
         wet_path: Path,
         realtime_x: float,
     ) -> None:
-        del run_id, wet_path, realtime_x
+        del run_id, realtime_x
+        with sf.SoundFile(wet_path) as audio:
+            self.uploaded_formats.append(
+                (case_id, wet_path.suffix, audio.format, audio.subtype, audio.samplerate)
+            )
         await asyncio.sleep(0.001)
         self.uploaded.append(case_id)
         if self.first_upload_finished_at is None:
@@ -154,6 +167,40 @@ async def test_dry_audio_is_reused_from_the_local_cache(tmp_path: Path) -> None:
 
     assert gateway.downloaded == ["case-1"]
     assert "download.cache_hit" in gateway.events
+
+
+async def test_model_wav_output_is_staged_as_pcm24_flac(tmp_path: Path) -> None:
+    case = BenchmarkCase("case-1", ((0.0,),), "dry/input.wav", "f" * 64)
+    gateway = FakeGateway((case,))
+    run = BenchmarkRun(
+        gateway=gateway,
+        metadata=BenchmarkMetadata(
+            name="flac-upload",
+            creator="test-suite",
+            unique_positions_used=1,
+            audio_duration_sum=0.01,
+            turns=1,
+            training_time=1.0,
+            description="FLAC staging",
+            parameter_count=1,
+        ),
+        cache_dir=tmp_path / "cache",
+    )
+
+    def model(_audio_path: Path, _positions: tuple[tuple[float, ...], ...]) -> Path:
+        wet_path = tmp_path / "model-output.wav"
+        sf.write(
+            wet_path,
+            np.linspace(-0.5, 0.5, 480, dtype=np.float32),
+            48_000,
+            format="WAV",
+            subtype="FLOAT",
+        )
+        return wet_path
+
+    await run.run_async("demo-amp", model)
+
+    assert gateway.uploaded_formats == [("case-1", ".flac", "FLAC", "PCM_24", 48_000)]
 
 
 def test_sync_runner_accepts_a_sync_model_callback(tmp_path: Path) -> None:

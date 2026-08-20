@@ -84,6 +84,10 @@ def _case_audio_url(run_id: str, case_id: str, kind: str) -> str:
     return f"/api/v1/runs/{run_id}/cases/{case_id}/audio/{kind}"
 
 
+def _audio_media_type(object_key: str) -> str:
+    return "audio/flac" if Path(object_key).suffix.lower() == ".flac" else "audio/wav"
+
+
 def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunResponse:
     return RunResponse(
         id=run.id,
@@ -375,7 +379,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         realtime_x: Annotated[float, Query()],
     ) -> dict[str, str]:
-        candidate_key = f"runs/{run_id}/candidates/{case_id}.wav"
+        request_media_type = request.headers.get("content-type", "").partition(";")[0].lower()
+        is_flac = request_media_type in {"application/flac", "audio/flac", "audio/x-flac"}
+        extension = ".flac" if is_flac else ".wav"
+        media_type = "audio/flac" if is_flac else "audio/wav"
+        candidate_key = f"runs/{run_id}/candidates/{case_id}{extension}"
         async with database.session() as session:
             run = await session.get(BenchmarkRun, run_id)
             if run is None:
@@ -394,7 +402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status.HTTP_409_CONFLICT, "run case no longer accepts uploads")
             run_case_id = run_case.id
         value = await request.body()
-        await storage.put(candidate_key, value)
+        await storage.put(candidate_key, value, content_type=media_type)
         async with database.session() as session:
             run_case = await session.get(RunCase, run_case_id)
             if run_case is None:
@@ -408,7 +416,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     run_id=run_id,
                     benchmark_case_id=case_id,
                     kind="upload.received",
-                    payload={"realtime_x": realtime_x, "bytes": len(value)},
+                    payload={
+                        "realtime_x": realtime_x,
+                        "bytes": len(value),
+                        "media_type": media_type,
+                    },
                 )
             )
         await services.scoring.enqueue(run_case_id)
@@ -572,7 +584,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if object_key is None or not await storage.exists(object_key):
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"{kind} audio not found")
         value = await storage.get(object_key)
-        return Response(content=value, media_type="audio/wav")
+        return Response(content=value, media_type=_audio_media_type(object_key))
 
     @app.get(
         "/api/v1/runs/{run_id}/events",
