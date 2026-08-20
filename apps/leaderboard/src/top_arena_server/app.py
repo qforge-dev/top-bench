@@ -67,6 +67,12 @@ def _case_response(run_case: RunCase) -> CaseResultResponse:
         level_db=run_case.level_db,
         peak_db=run_case.peak_db,
         correlation=run_case.correlation,
+        nam_esr=run_case.nam_esr,
+        nam_human_weighted_esr=run_case.nam_human_weighted_esr,
+        nam_mrstft=run_case.nam_mrstft,
+        nam_level_db=run_case.nam_level_db,
+        nam_peak_db=run_case.nam_peak_db,
+        nam_correlation=run_case.nam_correlation,
     )
 
 
@@ -514,6 +520,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 level_db=run_case.level_db,
                 peak_db=run_case.peak_db,
                 correlation=run_case.correlation,
+                nam_esr=run_case.nam_esr,
+                nam_human_weighted_esr=run_case.nam_human_weighted_esr,
+                nam_mrstft=run_case.nam_mrstft,
+                nam_level_db=run_case.nam_level_db,
+                nam_peak_db=run_case.nam_peak_db,
+                nam_correlation=run_case.nam_correlation,
             ),
             analysis=RunCaseAnalysisResponse.model_validate(run_case.analysis or {}),
             audio=RunCaseAudioResponse(

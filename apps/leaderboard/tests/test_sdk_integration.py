@@ -6,11 +6,13 @@ import httpx
 import numpy as np
 import pytest
 import soundfile as sf
+from sqlalchemy import select
 from top_arena._gateway import HttpBenchmarkGateway
 from top_arena._models import BenchmarkMetadata, PipelineOptions
 from top_arena._pipeline import BenchmarkRun
 from top_arena_server.app import create_app
 from top_arena_server.config import Settings
+from top_arena_server.models import BenchmarkCase
 from top_arena_server.seed import seed_sample_dataset
 
 
@@ -38,6 +40,11 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
             chunk_seconds=0.1,
             positions=(((0.1,),), ((0.3,),), ((0.6,),), ((0.9,),)),
         )
+        async with app.state.services.database.session() as session:
+            cases = (await session.scalars(select(BenchmarkCase))).all()
+            for case in cases:
+                case.nam_reference_wet_key = case.dry_key
+                case.reference_latency_samples = 0
         gateway = HttpBenchmarkGateway(
             "http://test",
             transport=httpx.ASGITransport(app=app),
@@ -70,6 +77,7 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
         assert result.total_cases == 4
         assert result.completed_cases == 4
         assert result.metrics["contract"]["version"] == "top-arena-audio-v2"  # type: ignore[index]
+        assert result.metrics["nam_a2_full"]["esr"]["mean"] == 0.0  # type: ignore[index]
 
         failed_run = BenchmarkRun(
             gateway=HttpBenchmarkGateway(

@@ -186,10 +186,16 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
             "esr": 0.01,
             "human_weighted_esr": 0.02,
             "mrstft": 0.03,
-            "level_db": 0.1,
-            "peak_db": 0.2,
-            "correlation": 0.99,
-        }
+                "level_db": 0.1,
+                "peak_db": 0.2,
+                "correlation": 0.99,
+                "nam_esr": None,
+                "nam_human_weighted_esr": None,
+                "nam_mrstft": None,
+                "nam_level_db": None,
+                "nam_peak_db": None,
+                "nam_correlation": None,
+            }
         assert first["analysis"]["version"] == "top-arena-case-analysis-v1"
         assert first["analysis"]["points"][0]["time_seconds"] == 0.0
         assert first["audio"] == {

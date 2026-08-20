@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import io
 import math
 from typing import cast
 
 import numpy as np
 import pytest
+import soundfile as sf
 from top_arena_server.metrics import calculate_metrics
 from top_arena_server.models import RunCase
-from top_arena_server.scoring import aggregate_metrics
+from top_arena_server.scoring import ScoringService, aggregate_metrics
 
 
 def test_identical_audio_has_zero_error() -> None:
@@ -62,6 +64,30 @@ def test_missing_candidate_tail_is_scored_as_silence() -> None:
     metrics = calculate_metrics(reference, candidate, sample_rate=48_000)
 
     assert metrics.esr == 0.5
+
+
+def test_bias_reference_latency_is_removed_before_scoring() -> None:
+    latency_samples = 9
+    time = np.arange(4_800, dtype=np.float32) / 48_000
+    candidate = (0.5 * np.sin(2 * np.pi * 997 * time)).astype(np.float32)
+    reference = np.concatenate(
+        (np.zeros(latency_samples, dtype=np.float32), candidate[:-latency_samples])
+    )
+
+    def encode(samples: np.ndarray) -> bytes:
+        destination = io.BytesIO()
+        sf.write(destination, samples, 48_000, format="FLAC", subtype="PCM_24")
+        return destination.getvalue()
+
+    unaligned = ScoringService._metrics_from_audio(  # noqa: SLF001
+        encode(reference), encode(candidate), reference_latency_samples=0
+    )
+    aligned = ScoringService._metrics_from_audio(  # noqa: SLF001
+        encode(reference), encode(candidate), reference_latency_samples=latency_samples
+    )
+
+    assert unaligned.esr > 0.5
+    assert aligned.esr == pytest.approx(0.0, abs=1e-10)
 
 
 def test_level_peak_and_correlation_describe_gain_and_polarity() -> None:

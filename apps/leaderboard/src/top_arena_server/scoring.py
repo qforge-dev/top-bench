@@ -119,13 +119,32 @@ class ScoringService:
             )
             run_id = run_case.run_id
             reference_key = run_case.benchmark_case.reference_wet_key
+            reference_latency_samples = run_case.benchmark_case.reference_latency_samples
+            nam_reference_key = run_case.benchmark_case.nam_reference_wet_key
             candidate_key = run_case.candidate_wet_key
 
         reference_bytes, candidate_bytes = await asyncio.gather(
-            self._storage.get(reference_key),
-            self._storage.get(candidate_key),
+            self._storage.get(reference_key), self._storage.get(candidate_key)
         )
-        metrics = await asyncio.to_thread(self._metrics_from_wav, reference_bytes, candidate_bytes)
+        nam_reference_bytes = (
+            await self._storage.get(nam_reference_key) if nam_reference_key is not None else None
+        )
+        metrics = await asyncio.to_thread(
+            self._metrics_from_audio,
+            reference_bytes,
+            candidate_bytes,
+            reference_latency_samples=reference_latency_samples,
+        )
+        nam_metrics = (
+            await asyncio.to_thread(
+                self._metrics_from_audio,
+                nam_reference_bytes,
+                candidate_bytes,
+                reference_latency_samples=0,
+            )
+            if nam_reference_bytes is not None
+            else None
+        )
 
         async with self._database.session() as session:
             run_case = await session.get(RunCase, run_case_id)
@@ -139,6 +158,13 @@ class ScoringService:
             run_case.peak_db = metrics.peak_db
             run_case.correlation = metrics.correlation
             run_case.analysis = dict(metrics.analysis)
+            if nam_metrics is not None:
+                run_case.nam_esr = nam_metrics.esr
+                run_case.nam_human_weighted_esr = nam_metrics.human_weighted_esr
+                run_case.nam_mrstft = nam_metrics.mrstft
+                run_case.nam_level_db = nam_metrics.level_db
+                run_case.nam_peak_db = nam_metrics.peak_db
+                run_case.nam_correlation = nam_metrics.correlation
             run_case.scored_at = now_utc()
             session.add(
                 RunEvent(
@@ -152,13 +178,30 @@ class ScoringService:
                         "level_db": metrics.level_db,
                         "peak_db": metrics.peak_db,
                         "correlation": metrics.correlation,
+                        "nam_a2_full": (
+                            {
+                                "esr": nam_metrics.esr,
+                                "human_weighted_esr": nam_metrics.human_weighted_esr,
+                                "mrstft": nam_metrics.mrstft,
+                                "level_db": nam_metrics.level_db,
+                                "peak_db": nam_metrics.peak_db,
+                                "correlation": nam_metrics.correlation,
+                            }
+                            if nam_metrics is not None
+                            else None
+                        ),
                     },
                 )
             )
         await self.finalize_if_ready(run_id)
 
     @staticmethod
-    def _metrics_from_wav(reference_bytes: bytes, candidate_bytes: bytes) -> AudioMetrics:
+    def _metrics_from_audio(
+        reference_bytes: bytes,
+        candidate_bytes: bytes,
+        *,
+        reference_latency_samples: int,
+    ) -> AudioMetrics:
         reference, reference_rate = sf.read(
             io.BytesIO(reference_bytes), dtype="float32", always_2d=False
         )
@@ -178,6 +221,18 @@ class ScoringService:
                 reference_rate // divisor,
                 candidate_rate // divisor,
             ).astype(np.float32)
+        if reference_latency_samples < 0:
+            msg = "reference latency must not be negative"
+            raise ValueError(msg)
+        if reference_latency_samples:
+            if (
+                len(reference_array) <= reference_latency_samples
+                or len(candidate_array) <= reference_latency_samples
+            ):
+                msg = "audio is shorter than the reference latency"
+                raise ValueError(msg)
+            reference_array = reference_array[reference_latency_samples:]
+            candidate_array = candidate_array[:-reference_latency_samples]
         return calculate_metrics(reference_array, candidate_array, sample_rate=reference_rate)
 
     async def _finalize_if_ready(self, run: BenchmarkRun, session: AsyncSession) -> bool:
@@ -254,7 +309,7 @@ def _summary(values: Sequence[float], *, higher_is_better: bool = False) -> dict
 
 
 def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
-    return {
+    result: dict[str, Any] = {
         "contract": {
             "version": "top-arena-audio-v2",
             "sample_rate": 48_000,
@@ -266,6 +321,10 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
                 "dbfs_floor": -120.0,
             },
             "human_weighting": "A-weighted spectral ESR",
+            "comparisons": {
+                "bias_x": "candidate vs latency-aligned BIAS X reference",
+                "nam_a2_full": "candidate vs 200-epoch static NAM A2 Full baseline",
+            },
             "mrstft": [
                 {"fft": 512, "hop": 50, "window": 240},
                 {"fft": 1024, "hop": 120, "window": 600},
@@ -288,3 +347,21 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             higher_is_better=True,
         ),
     }
+    nam_rows = [row for row in rows if row.nam_esr is not None]
+    result["nam_a2_full"] = {
+        "available_cases": len(nam_rows),
+        "esr": _summary([value for row in nam_rows if (value := row.nam_esr) is not None]),
+        "human_weighted_esr": _summary(
+            [value for row in nam_rows if (value := row.nam_human_weighted_esr) is not None]
+        ),
+        "mrstft": _summary([value for row in nam_rows if (value := row.nam_mrstft) is not None]),
+        "level_db": _summary(
+            [value for row in nam_rows if (value := row.nam_level_db) is not None]
+        ),
+        "peak_db": _summary([value for row in nam_rows if (value := row.nam_peak_db) is not None]),
+        "correlation": _summary(
+            [value for row in nam_rows if (value := row.nam_correlation) is not None],
+            higher_is_better=True,
+        ),
+    }
+    return result

@@ -78,6 +78,12 @@ class CaseResultResponse(ApiModel):
     level_db: float | None
     peak_db: float | None
     correlation: float | None
+    nam_esr: float | None
+    nam_human_weighted_esr: float | None
+    nam_mrstft: float | None
+    nam_level_db: float | None
+    nam_peak_db: float | None
+    nam_correlation: float | None
 
 
 class RunResponse(ApiModel):
@@ -130,6 +136,12 @@ class RunCaseMetricsResponse(ApiModel):
     level_db: float | None
     peak_db: float | None
     correlation: float | None
+    nam_esr: float | None
+    nam_human_weighted_esr: float | None
+    nam_mrstft: float | None
+    nam_level_db: float | None
+    nam_peak_db: float | None
+    nam_correlation: float | None
 
 
 class RunCaseAudioResponse(ApiModel):
