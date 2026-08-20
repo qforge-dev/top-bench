@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -170,7 +171,7 @@ class QueueStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute(
                 """
@@ -196,7 +197,7 @@ class QueueStore:
         return connection
 
     def add(self, job_key: str, job: dict[str, Any]) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT OR IGNORE INTO jobs
@@ -233,7 +234,7 @@ class QueueStore:
             connection.close()
 
     def transition(self, job_id: str, status: str, *, error: str | None = None) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 "UPDATE jobs SET status = ?, error = ?, updated_at = ? WHERE job_id = ?",
                 (status, error, datetime.now(UTC).isoformat(), job_id),
@@ -242,7 +243,7 @@ class QueueStore:
     def fail(self, job_id: str, stage: str, error: BaseException) -> None:
         attempt_column = "train_attempts" if stage == "training" else "inference_attempts"
         retry_status = "pending" if stage == "training" else "trained"
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 f"UPDATE jobs SET {attempt_column} = {attempt_column} + 1 WHERE job_id = ?",  # noqa: S608
                 (job_id,),
@@ -265,7 +266,7 @@ class QueueStore:
             )
 
     def counts(self) -> dict[str, int]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             return {
                 str(row[0]): int(row[1])
                 for row in connection.execute("SELECT status, count(*) FROM jobs GROUP BY status")
