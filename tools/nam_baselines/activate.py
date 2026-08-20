@@ -22,7 +22,10 @@ REFERENCE_LATENCY_SAMPLES = 9
 
 class S3Like(Protocol):
     def get_object(
-        self, *, Bucket: str, Key: str  # noqa: N803
+        self,
+        *,
+        Bucket: str,  # noqa: N803
+        Key: str,  # noqa: N803
     ) -> dict[str, Any]: ...
 
     def get_paginator(self, operation_name: str) -> Any: ...  # noqa: ANN401
@@ -76,17 +79,11 @@ class DatasetActivator:
     def _keys(self, prefix: str) -> set[str]:
         paginator = self.s3.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=self.bucket, Prefix=prefix)
-        return {
-            str(item["Key"])
-            for page in pages
-            for item in page.get("Contents", [])
-        }
+        return {str(item["Key"]) for page in pages for item in page.get("Contents", [])}
 
     def _amp_manifest_keys(self) -> list[str]:
         prefix = f"{self.prefix}/amps/"
-        return sorted(
-            key for key in self._keys(prefix) if key.endswith("/positions.json")
-        )
+        return sorted(key for key in self._keys(prefix) if key.endswith("/positions.json"))
 
     def _build_if_ready(
         self,
@@ -250,9 +247,7 @@ class DatasetActivator:
         return True
 
     async def scan_once(self) -> list[str]:
-        dry_manifest = await asyncio.to_thread(
-            self._json, f"{self.prefix}/manifests/dry.json"
-        )
+        dry_manifest = await asyncio.to_thread(self._json, f"{self.prefix}/manifests/dry.json")
         manifest_keys = await asyncio.to_thread(self._amp_manifest_keys)
         activated: list[str] = []
         for manifest_key in manifest_keys:

@@ -23,12 +23,10 @@ def _amp_spec(amp_id: str) -> AmpSpec:
                 dry_key=f"corpus/dry/sound-{sound + 1:02d}.flac",
                 dry_sha256="0" * 64,
                 reference_wet_key=(
-                    f"corpus/wet/{amp_id}/position-{position + 1:02d}/"
-                    f"sound-{sound + 1:02d}.flac"
+                    f"corpus/wet/{amp_id}/position-{position + 1:02d}/sound-{sound + 1:02d}.flac"
                 ),
                 nam_reference_wet_key=(
-                    f"corpus/nam/{amp_id}/position-{position + 1:02d}/"
-                    f"sound-{sound + 1:02d}.flac"
+                    f"corpus/nam/{amp_id}/position-{position + 1:02d}/sound-{sound + 1:02d}.flac"
                 ),
                 duration_seconds=15.0,
                 sample_rate=48_000,
@@ -93,9 +91,7 @@ async def test_activation_preserves_a_starter_run_and_is_idempotent(tmp_path: Pa
         old_case = await session.get(BenchmarkCase, old_case_id)
         production_amp = await session.get(Amp, amp_id)
         production_case_count = await session.scalar(
-            select(func.count())
-            .select_from(BenchmarkCase)
-            .where(BenchmarkCase.amp_id == amp_id)
+            select(func.count()).select_from(BenchmarkCase).where(BenchmarkCase.amp_id == amp_id)
         )
         assert run is not None
         assert old_case is not None
@@ -104,9 +100,7 @@ async def test_activation_preserves_a_starter_run_and_is_idempotent(tmp_path: Pa
         assert old_case.amp_id == f"{amp_id}:starter-v1"
         assert production_amp.name == "Production Amp"
         assert production_case_count == 50
-        production_case = await session.get(
-            BenchmarkCase, f"v1-{amp_id}-sound-01-position-01"
-        )
+        production_case = await session.get(BenchmarkCase, f"v1-{amp_id}-sound-01-position-01")
         assert production_case is not None
         assert production_case.reference_latency_samples == 9
         assert production_case.nam_reference_wet_key is not None
