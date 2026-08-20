@@ -31,3 +31,7 @@ def test_benchmark_create_builds_a_typed_run(tmp_path: Path) -> None:
     assert run.metadata.name == "super-model-v1"
     assert run.metadata.parameter_count == 40_000
     assert run.cache_dir == tmp_path
+
+
+def test_default_server_is_the_online_leaderboard() -> None:
+    assert benchmark.DEFAULT_SERVER_URL == "https://top-arena.54-90-214-165.sslip.io"

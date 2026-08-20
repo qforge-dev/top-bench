@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+import pytest
 import soundfile as sf
 from top_arena._gateway import HttpBenchmarkGateway
 from top_arena._models import BenchmarkMetadata, PipelineOptions
@@ -69,3 +70,39 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
         assert result.total_cases == 4
         assert result.completed_cases == 4
         assert result.metrics["contract"]["version"] == "top-arena-audio-v1"  # type: ignore[index]
+
+        failed_run = BenchmarkRun(
+            gateway=HttpBenchmarkGateway(
+                "http://test",
+                transport=httpx.ASGITransport(app=app),
+            ),
+            metadata=BenchmarkMetadata(
+                name="sdk-callback-failure",
+                creator="tests",
+                unique_positions_used=1,
+                audio_duration_sum=0.1,
+                turns=1,
+                training_time=1.0,
+                description="Callback failure contract test",
+                parameter_count=1,
+            ),
+            cache_dir=tmp_path / "failed-cache",
+            options=PipelineOptions(poll_interval_seconds=0.01),
+        )
+
+        def broken_model(_dry: Path, _positions: tuple[tuple[float, ...], ...]) -> Path:
+            msg = "model exploded"
+            raise RuntimeError(msg)
+
+        with pytest.raises(ExceptionGroup) as raised:
+            await failed_run.run_async("integration-amp", broken_model)
+        assert "model exploded" in str(raised.value.exceptions[0])
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            leaderboard = (await client.get("/api/v1/leaderboard")).json()
+        failed_snapshot = next(
+            run for run in leaderboard["runs"] if run["name"] == "sdk-callback-failure"
+        )
+        assert failed_snapshot["status"] == "failed"

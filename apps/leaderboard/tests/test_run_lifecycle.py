@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import httpx
@@ -15,8 +16,12 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
     source = tmp_path / "source.wav"
     signal = (0.2 * np.sin(2 * np.pi * 220 * np.arange(48_000) / 48_000)).astype(np.float32)
     sf.write(source, signal, 48_000, subtype="FLOAT")
+    database_url = os.environ.get(
+        "TOP_ARENA_TEST_DATABASE_URL",
+        f"sqlite+aiosqlite:///{tmp_path / 'arena.db'}",
+    )
     settings = Settings(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'arena.db'}",
+        database_url=database_url,
         storage_backend="filesystem",
         storage_path=tmp_path / "objects",
         public_base_url="http://test",
@@ -86,6 +91,14 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert snapshot["metrics"]["esr"]["mean"] is not None  # type: ignore[index]
             assert snapshot["metrics"]["mrstft"]["p90"] is not None  # type: ignore[index]
 
+            retry = await client.put(
+                f"/api/v1/runs/{run_id}/cases/{case['id']}/audio",
+                params={"realtime_x": 99.0},
+                content=dry_response.content,
+                headers={"content-type": "audio/wav"},
+            )
+            assert retry.status_code == 409
+
             events_response = await client.get(f"/api/v1/runs/{run_id}/events")
             events_response.raise_for_status()
             kinds = {event["kind"] for event in events_response.json()["events"]}
@@ -98,3 +111,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
+
+            leaderboard_response = await client.get("/api/v1/leaderboard")
+            leaderboard_response.raise_for_status()
+            assert leaderboard_response.json()["runs"][0]["cases"] == []

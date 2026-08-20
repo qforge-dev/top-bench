@@ -16,8 +16,9 @@ Environment=UV_NO_PROGRESS=1
 Environment=UV_PYTHON=3.14
 ExecStartPre=/usr/bin/test -x /home/ubuntu/.local/bin/uv
 ExecStartPre=/usr/bin/test -r /home/ubuntu/top-bench/uv.lock
-ExecStartPre=/home/ubuntu/.local/bin/uv run --frozen --no-sync --package top-arena-leaderboard alembic -c infra/alembic.ini upgrade head
-ExecStart=/home/ubuntu/.local/bin/uv run --frozen --no-sync --package top-arena-leaderboard top-arena-server
+ExecStartPre=/usr/bin/test -x /home/ubuntu/top-bench/.venv/bin/alembic
+ExecStartPre=/home/ubuntu/top-bench/.venv/bin/alembic -c infra/alembic.ini upgrade head
+ExecStart=/home/ubuntu/top-bench/.venv/bin/top-arena-server
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

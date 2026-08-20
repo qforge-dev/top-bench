@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from platformdirs import user_cache_path
@@ -10,7 +11,7 @@ from top_arena._gateway import HttpBenchmarkGateway
 from top_arena._models import BenchmarkMetadata, PipelineOptions
 from top_arena._pipeline import BenchmarkRun
 
-DEFAULT_SERVER_URL = "http://localhost:8000"
+DEFAULT_SERVER_URL = "https://top-arena.54-90-214-165.sslip.io"
 
 
 def create(
@@ -23,7 +24,7 @@ def create(
     training_time: float,
     description: str,
     parameter_count: int,
-    server_url: str = DEFAULT_SERVER_URL,
+    server_url: str | None = None,
     cache_dir: str | Path | None = None,
     options: PipelineOptions | None = None,
 ) -> BenchmarkRun:
@@ -43,7 +44,9 @@ def create(
         else Path(cache_dir).expanduser()
     )
     return BenchmarkRun(
-        gateway=HttpBenchmarkGateway(server_url),
+        gateway=HttpBenchmarkGateway(
+            server_url or os.environ.get("TOP_ARENA_SERVER_URL", DEFAULT_SERVER_URL)
+        ),
         metadata=metadata,
         cache_dir=resolved_cache_dir,
         options=options,

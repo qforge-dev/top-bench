@@ -36,11 +36,27 @@ class ScoringService:
 
     async def start(self) -> None:
         async with self._database.session() as session:
-            recoverable = await session.scalars(
-                select(RunCase.id).where(RunCase.status.in_(("uploaded", "scoring")))
+            recoverable = tuple(
+                (
+                    await session.scalars(
+                        select(RunCase.id).where(RunCase.status.in_(("uploaded", "scoring")))
+                    )
+                ).all()
             )
-            for run_case_id in recoverable:
-                await self.enqueue(run_case_id)
+            finalizable = tuple(
+                (
+                    await session.scalars(
+                        select(BenchmarkRun.id).where(
+                            BenchmarkRun.client_finished.is_(True),
+                            BenchmarkRun.status.notin_(("completed", "failed")),
+                        )
+                    )
+                ).all()
+            )
+        for run_case_id in recoverable:
+            await self.enqueue(run_case_id)
+        for run_id in finalizable:
+            await self.finalize_if_ready(run_id)
         self._workers = [
             asyncio.create_task(self._worker(), name=f"score-worker-{index}")
             for index in range(max(1, self._settings.score_worker_count))
@@ -218,15 +234,15 @@ class ScoringService:
             )
 
 
-def _summary(values: Sequence[float]) -> dict[str, float | None]:
+def _summary(values: Sequence[float], *, higher_is_better: bool = False) -> dict[str, float | None]:
     if not values:
         return {"mean": None, "p90": None, "worst": None, "best": None}
     array = np.asarray(values, dtype=np.float64)
     return {
         "mean": float(np.mean(array)),
         "p90": float(np.quantile(array, 0.9)),
-        "worst": float(np.max(array)),
-        "best": float(np.min(array)),
+        "worst": float(np.min(array) if higher_is_better else np.max(array)),
+        "best": float(np.max(array) if higher_is_better else np.min(array)),
     }
 
 
@@ -248,5 +264,8 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             [value for row in rows if (value := row.human_weighted_esr) is not None]
         ),
         "mrstft": _summary([value for row in rows if (value := row.mrstft) is not None]),
-        "realtime_x": _summary([value for row in rows if (value := row.realtime_x) is not None]),
+        "realtime_x": _summary(
+            [value for row in rows if (value := row.realtime_x) is not None],
+            higher_is_better=True,
+        ),
     }

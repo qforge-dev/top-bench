@@ -2,8 +2,7 @@
 
 The local, fully typed benchmark runner for Top Bench.
 
-Install it straight from the GitHub repository while the package is private to the
-project:
+Install it straight from the public GitHub repository:
 
 ```bash
 uv add "top-arena @ git+https://github.com/qforge-dev/top-bench.git@main#subdirectory=packages/top-arena"
@@ -37,9 +36,10 @@ async def model(dry_audio: Path, positions: tuple[tuple[float, ...], ...]) -> Pa
     return await render_wet_audio(dry_audio, positions)
 
 
-result = run.run("demo-bias-x", model)
+result = run.run("D3D21964-8E80-11EE-B9D1-0242AC120002", model)
 print(result)
 ```
 
 Call `await run.run_async(...)` when the surrounding application already owns an
-async event loop.
+async event loop. The online leaderboard is the default server; set
+`TOP_ARENA_SERVER_URL` to target another deployment without changing application code.

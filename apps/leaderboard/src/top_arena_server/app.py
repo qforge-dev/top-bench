@@ -53,7 +53,7 @@ def _case_response(run_case: RunCase) -> CaseResultResponse:
     )
 
 
-def _run_response(run: BenchmarkRun) -> RunResponse:
+def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunResponse:
     return RunResponse(
         id=run.id,
         name=run.name,
@@ -73,7 +73,7 @@ def _run_response(run: BenchmarkRun) -> RunResponse:
         metrics=run.metrics,
         created_at=run.created_at,
         completed_at=run.completed_at,
-        cases=[_case_response(run_case) for run_case in run.cases],
+        cases=[_case_response(run_case) for run_case in run.cases] if include_cases else [],
     )
 
 
@@ -97,18 +97,14 @@ async def _leaderboard_runs(
     sort_key: str = "esr",
     direction: str = "asc",
 ) -> list[RunResponse]:
-    statement = (
-        select(BenchmarkRun)
-        .join(BenchmarkRun.amp)
-        .options(joinedload(BenchmarkRun.amp), selectinload(BenchmarkRun.cases))
-    )
+    statement = select(BenchmarkRun).join(BenchmarkRun.amp).options(joinedload(BenchmarkRun.amp))
     if amp_type:
         statement = statement.where(Amp.amp_type == amp_type)
     if creator:
         statement = statement.where(BenchmarkRun.creator == creator)
     async with services.database.session() as session:
         runs = (await session.scalars(statement)).unique().all()
-    responses = [_run_response(run) for run in runs]
+    responses = [_run_response(run, include_cases=False) for run in runs]
 
     def metric_value(run: RunResponse, metric: str, summary: str = "mean") -> float:
         value = run.metrics.get(metric, {}).get(summary)
@@ -278,6 +274,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run = await session.get(BenchmarkRun, run_id)
             if run is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+            if request.kind == "run.client_failed" and run.status not in {"completed", "failed"}:
+                run.status = "failed"
             event = RunEvent(
                 run_id=run_id,
                 benchmark_case_id=request.case_id,
@@ -305,9 +303,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         realtime_x: Annotated[float, Query()],
     ) -> dict[str, str]:
-        value = await request.body()
         candidate_key = f"runs/{run_id}/candidates/{case_id}.wav"
         async with database.session() as session:
+            run = await session.get(BenchmarkRun, run_id)
+            if run is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+            if run.client_finished or run.status in {"completed", "failed"}:
+                raise HTTPException(status.HTTP_409_CONFLICT, "run no longer accepts uploads")
             run_case = await session.scalar(
                 select(RunCase).where(
                     RunCase.run_id == run_id,
@@ -316,7 +318,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if run_case is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+            if run_case.status in {"scoring", "completed", "failed"}:
+                raise HTTPException(status.HTTP_409_CONFLICT, "run case no longer accepts uploads")
             run_case_id = run_case.id
+        value = await request.body()
         await storage.put(candidate_key, value)
         async with database.session() as session:
             run_case = await session.get(RunCase, run_case_id)

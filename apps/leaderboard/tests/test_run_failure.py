@@ -71,3 +71,55 @@ async def test_scoring_failure_remains_terminal_after_finish(tmp_path: Path) -> 
             finished = await client.post(f"/api/v1/runs/{run_id}/finish")
             finished.raise_for_status()
             assert finished.json()["status"] == "failed"
+
+
+async def test_client_failure_event_marks_the_run_failed(tmp_path: Path) -> None:
+    source = tmp_path / "source.wav"
+    sf.write(source, np.zeros(4_800, dtype=np.float32), 48_000)
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'client-failure.db'}",
+        storage_backend="filesystem",
+        storage_path=tmp_path / "objects",
+    )
+    app = create_app(settings)
+
+    async with app.router.lifespan_context(app):
+        await seed_sample_dataset(
+            settings,
+            source=source,
+            amp_id="client-failure-amp",
+            amp_name="Client Failure Amp",
+            amp_type="guitar",
+            chunk_count=1,
+            chunk_seconds=0.1,
+            positions=(((0.0,),),),
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            created = await client.post(
+                "/api/v1/runs",
+                json={
+                    "amp_id": "client-failure-amp",
+                    "name": "callback-crashed",
+                    "creator": "tests",
+                    "unique_positions_used": 1,
+                    "audio_duration_sum": 0.1,
+                    "turns": 1,
+                    "training_time": 1.0,
+                    "description": "Callback failure",
+                    "parameter_count": 1,
+                },
+            )
+            created.raise_for_status()
+            run_id = created.json()["id"]
+
+            event = await client.post(
+                f"/api/v1/runs/{run_id}/events",
+                json={"kind": "run.client_failed", "payload": {"error": "model exploded"}},
+            )
+            event.raise_for_status()
+
+            snapshot = await client.get(f"/api/v1/runs/{run_id}")
+            snapshot.raise_for_status()
+            assert snapshot.json()["status"] == "failed"
