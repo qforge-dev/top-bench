@@ -11,6 +11,19 @@ The existing Caddy site and its port-8900 upstream are not replaced. Docker is
 not required on `bestia`; the Dockerfile is available for reproducible builds
 elsewhere.
 
+## MVP durability boundary
+
+The public hostname currently encodes `bestia`'s automatically assigned public
+IPv4 address. The instance has no Elastic IP, so an EC2 stop/start changes the
+address and requires updating the sslip.io hostname, Caddy site, server environment,
+and SDK default together. Associating an Elastic IP or a real DNS name is the next
+step before treating this URL as permanent.
+
+PostgreSQL also runs on `bestia`'s root EBS volume for this deliberately small
+launch. S3 audio has bucket versioning, but leaderboard metadata needs its own
+backup policy before production use; an RDS migration can wait until the workload
+justifies another service.
+
 ## One-time host setup
 
 Ubuntu 26.04's system packages are sufficient. Install PostgreSQL and the audio

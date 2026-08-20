@@ -6,6 +6,8 @@ Top Bench is an open audio-model benchmark with two parts:
 - `apps/leaderboard`: the FastAPI API, scoring worker, PostgreSQL data model, S3 storage,
   and live HTML leaderboard.
 
+The live leaderboard is [top-arena.54-90-214-165.sslip.io](https://top-arena.54-90-214-165.sslip.io/).
+
 The starter dataset is Blackface 63: ten frame-aligned five-second dry excerpts at five
 static control positions, for 50 benchmark cases. Dry audio, reference wet audio, and
 submitted wet audio live in S3. PostgreSQL stores manifests, run state, per-case scores,
@@ -38,7 +40,6 @@ run = benchmark.create(
     training_time=5_000.0,
     description="Model description",
     parameter_count=40_000,
-    server_url="https://top-arena.54-90-214-165.sslip.io",
     options=PipelineOptions(
         download_concurrency=4,
         run_concurrency=1,
