@@ -1,0 +1,10 @@
+{
+  "name": "top-bench-ui-tests",
+  "private": true,
+  "scripts": {
+    "test:ui": "node --test apps/leaderboard/tests/ui/*.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "29.1.1"
+  }
+}

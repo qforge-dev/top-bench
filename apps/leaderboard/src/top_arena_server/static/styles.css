@@ -689,6 +689,19 @@ td > strong {
   font-size: 0.82rem;
 }
 
+.model-link {
+  color: inherit;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: color 130ms ease, text-decoration-color 130ms ease;
+}
+
+.model-link:hover {
+  color: var(--accent-strong);
+  text-decoration-color: rgb(183 243 74 / 55%);
+}
+
 .model-cell > span,
 .cell-secondary {
   display: block;

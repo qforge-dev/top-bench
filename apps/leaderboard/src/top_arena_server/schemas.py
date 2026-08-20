@@ -75,6 +75,9 @@ class CaseResultResponse(ApiModel):
     esr: float | None
     human_weighted_esr: float | None
     mrstft: float | None
+    level_db: float | None
+    peak_db: float | None
+    correlation: float | None
 
 
 class RunResponse(ApiModel):
@@ -103,3 +106,72 @@ class LeaderboardResponse(ApiModel):
     runs: list[RunResponse]
     amp_types: list[str]
     creators: list[str]
+
+
+class RunCaseIndexItem(ApiModel):
+    case_id: str
+    index: int
+    chunk_index: int
+    position_index: int
+    status: str
+    url: str
+
+
+class RunCaseIndexResponse(ApiModel):
+    run: RunResponse
+    cases: list[RunCaseIndexItem]
+
+
+class RunCaseMetricsResponse(ApiModel):
+    realtime_x: float | None
+    esr: float | None
+    human_weighted_esr: float | None
+    mrstft: float | None
+    level_db: float | None
+    peak_db: float | None
+    correlation: float | None
+
+
+class RunCaseAudioResponse(ApiModel):
+    dry: str
+    reference: str
+    candidate: str | None
+
+
+class RunCaseAnalysisPoint(ApiModel):
+    time_seconds: float
+    esr: float
+    reference_level_db: float
+    candidate_level_db: float
+    level_delta_db: float
+    reference_peak_db: float
+    candidate_peak_db: float
+    peak_delta_db: float
+    correlation: float
+
+
+class RunCaseAnalysisResponse(ApiModel):
+    version: str = "top-arena-case-analysis-v1"
+    window_seconds: float = 0.1
+    hop_seconds: float = 0.1
+    points: list[RunCaseAnalysisPoint] = Field(default_factory=list)
+
+
+class RunCaseDetailResponse(ApiModel):
+    run: RunResponse
+    case_id: str
+    index: int
+    total: int
+    chunk_index: int
+    position_index: int
+    status: str
+    positions: list[list[float]]
+    control_names: list[str]
+    duration_seconds: float
+    sample_rate: int
+    metrics: RunCaseMetricsResponse
+    analysis: RunCaseAnalysisResponse
+    audio: RunCaseAudioResponse
+    url: str
+    previous_url: str | None
+    next_url: str | None

@@ -1,0 +1,258 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import { JSDOM } from "jsdom";
+
+const SCRIPT_URL = new URL("../../src/top_arena_server/static/case_detail.js", import.meta.url);
+
+const CASES = [
+  { case_id: "case-a", index: 1, chunk_index: 0, position_index: 0, status: "completed", url: "/runs/run-1/cases/case-a" },
+  { case_id: "case-b", index: 2, chunk_index: 0, position_index: 1, status: "completed", url: "/runs/run-1/cases/case-b" },
+];
+
+function detail(caseId, index) {
+  const offset = index / 10;
+  return {
+    run: {
+      id: "run-1",
+      name: "Velvet Drive",
+      creator: "Studio North",
+      description: "A compact recurrent amp model.",
+      status: "completed",
+      amp_name: "Blackface 63",
+      unique_positions_used: 5,
+      total_cases: 2,
+      completed_cases: 2,
+      metrics: {
+        esr: { mean: 0.031, p90: 0.044, worst: 0.051, best: 0.019 },
+        human_weighted_esr: { mean: 0.027 },
+        level_db: { mean: 0.54 },
+        peak_db: { mean: 0.37 },
+        correlation: { mean: 0.94 },
+        mrstft: { mean: 0.112 },
+        realtime_x: { mean: 18.4 },
+      },
+    },
+    case_id: caseId,
+    index,
+    total: 2,
+    chunk_index: 0,
+    position_index: index - 1,
+    status: "completed",
+    positions: [[0.66, 0.33]],
+    control_names: ["bass", "master"],
+    duration_seconds: 5,
+    sample_rate: 48_000,
+    metrics: {
+      esr: 0.02 + offset,
+      human_weighted_esr: 0.018 + offset,
+      mrstft: 0.1 + offset,
+      realtime_x: 17 + index,
+      level_db: 0.5 + offset,
+      peak_db: 0.3 + offset,
+      correlation: 0.98 - offset,
+    },
+    analysis: {
+      version: "top-arena-case-analysis-v1",
+      window_seconds: 0.1,
+      hop_seconds: 0.1,
+      points: [
+        {
+          time_seconds: 0,
+          esr: 0.01 + offset,
+          reference_level_db: -15,
+          candidate_level_db: -14,
+          reference_peak_db: -2,
+          candidate_peak_db: -1.8,
+          correlation: -0.25,
+        },
+        {
+          time_seconds: 5,
+          esr: 0.02 + offset,
+          reference_level_db: -13,
+          candidate_level_db: -12.5,
+          reference_peak_db: -1.5,
+          candidate_peak_db: -1.2,
+          correlation: 0.95 - offset,
+        },
+      ],
+    },
+    audio: {
+      dry: `/audio/${caseId}/dry.wav`,
+      reference: `/audio/${caseId}/reference.wav`,
+      candidate: `/audio/${caseId}/candidate.wav`,
+    },
+    url: `/runs/run-1/cases/${caseId}`,
+    previous_url: index === 1 ? null : "/runs/run-1/cases/case-a",
+    next_url: index === 2 ? null : "/runs/run-1/cases/case-b",
+  };
+}
+
+function markup() {
+  return `<!doctype html><html><body>
+    <main id="run-detail" data-run-id="run-1" data-case-id="case-a">
+      <div id="detail-loading"></div><div id="detail-error" hidden></div><div id="detail-empty" hidden></div>
+      <div id="detail-content" hidden>
+        <span id="run-status"></span><h1 id="run-name"></h1><p id="run-description"></p><span id="run-creator"></span><span id="run-amp"></span>
+        <div id="run-summary"></div>
+        <button id="previous-case" type="button">Previous</button>
+        <select id="case-select"></select><span id="case-position"></span>
+        <button id="next-case" type="button">Next</button>
+        <p id="case-label"></p><p id="case-meta"></p><div id="position-chips"></div>
+        <div id="case-metrics"></div>
+        <audio id="dry-audio" preload="none"></audio><a id="dry-download"></a>
+        <audio id="reference-audio" preload="none"></audio><a id="reference-download"></a>
+        <audio id="candidate-audio" preload="none"></audio><a id="candidate-download"></a><p id="candidate-missing" hidden></p>
+        <div role="tablist">
+          <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" tabindex="0">ESR</button>
+          <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" tabindex="-1">Level dB</button>
+          <button id="tab-peak" role="tab" data-metric="peak_db" aria-selected="false" tabindex="-1">Peak dB</button>
+          <button id="tab-correlation" role="tab" data-metric="correlation" aria-selected="false" tabindex="-1">Correlation</button>
+        </div>
+        <p id="chart-summary"></p><div id="case-chart-legend"></div>
+        <svg id="case-chart" viewBox="0 0 1000 420"></svg>
+      </div>
+    </main>
+  </body></html>`;
+}
+
+async function waitFor(assertion, timeoutMs = 1_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  assertion();
+}
+
+async function setup({ captureTimers = false, failAfterDetailRequests = Infinity, runStatus = "completed" } = {}) {
+  const dom = new JSDOM(markup(), {
+    runScripts: "outside-only",
+    url: "https://arena.test/runs/run-1/cases/case-a",
+  });
+  const { window } = dom;
+  const requests = [];
+  const timers = [];
+  if (captureTimers) {
+    window.setTimeout = (callback, delay) => {
+      timers.push({ callback, cancelled: false, delay });
+      return timers.length;
+    };
+    window.clearTimeout = (timerId) => {
+      if (timers[timerId - 1]) timers[timerId - 1].cancelled = true;
+    };
+  }
+  let detailRequests = 0;
+  window.fetch = async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/detail")) {
+      detailRequests += 1;
+      if (detailRequests > failAfterDetailRequests) {
+        return { ok: false, status: 503 };
+      }
+    }
+    const payload = url.endsWith("/case-index")
+      ? { run: detail("case-a", 1).run, cases: CASES }
+      : detail(url.endsWith("case-b/detail") ? "case-b" : "case-a", url.endsWith("case-b/detail") ? 2 : 1);
+    payload.run.status = runStatus;
+    if (!url.endsWith("/case-index")) payload.status = runStatus;
+    return { ok: true, status: 200, json: async () => payload };
+  };
+  const script = await readFile(SCRIPT_URL, "utf8");
+  window.eval(script);
+  await waitFor(() => assert.equal(window.document.querySelector("#detail-content").hidden, false));
+  return { requests, timers, window };
+}
+
+test("deep link loads one case lazily and renders its summary, graph, and audio", async () => {
+  const { requests, window } = await setup();
+  const document = window.document;
+
+  assert.deepEqual(requests, [
+    "/api/v1/runs/run-1/case-index",
+    "/api/v1/runs/run-1/cases/case-a/detail",
+  ]);
+  assert.equal(document.querySelector("#run-name").textContent, "Velvet Drive");
+  assert.equal(document.title, "Velvet Drive · Case detail · Top Arena");
+  assert.match(document.querySelector("#run-summary").textContent, /Mean level Δ/);
+  assert.match(document.querySelector("#run-summary").textContent, /Mean peak Δ/);
+  assert.match(document.querySelector("#run-summary").textContent, /Mean correlation/);
+  assert.equal(document.querySelector("#case-position").textContent, "1 / 2");
+  assert.match(document.querySelector("#position-chips").textContent, /bass\s+0\.66/);
+  assert.match(document.querySelector("#case-metrics").textContent, /Correlation/);
+  assert.match(document.querySelector("#case-metrics").textContent, /0\.8800/);
+  assert.equal(document.querySelector("#dry-audio").getAttribute("preload"), "none");
+  assert.equal(document.querySelector("#dry-audio").getAttribute("src"), "/audio/case-a/dry.wav");
+  assert.equal(document.querySelector("#case-chart").dataset.metric, "esr");
+  assert.ok(document.querySelectorAll("#case-chart .chart-series").length > 0);
+
+  document.querySelector("#tab-correlation").click();
+  assert.equal(document.querySelector("#case-chart").dataset.metric, "correlation");
+  assert.match(document.querySelector("#case-chart").textContent, /-1\.00/);
+  assert.match(document.querySelector("#case-chart").textContent, /1\.00/);
+});
+
+test("arrows and select update the canonical URL and replace all case media", async () => {
+  const { requests, window } = await setup();
+  const document = window.document;
+
+  document.querySelector("#next-case").click();
+  await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
+
+  assert.equal(window.location.pathname, "/runs/run-1/cases/case-b");
+  assert.equal(document.querySelector("#candidate-audio").getAttribute("src"), "/audio/case-b/candidate.wav");
+  assert.equal(document.querySelector("#next-case").disabled, true);
+  assert.equal(requests.filter((url) => url.endsWith("/detail")).length, 2);
+
+  const select = document.querySelector("#case-select");
+  select.value = "case-a";
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "1 / 2"));
+  assert.equal(window.location.pathname, "/runs/run-1/cases/case-a");
+  assert.equal(document.querySelector("#reference-audio").getAttribute("src"), "/audio/case-a/reference.wav");
+});
+
+test("history and keyboard-operated metric tabs restore the selected state", async () => {
+  const { window } = await setup();
+  const document = window.document;
+
+  document.querySelector("#next-case").click();
+  await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
+
+  window.history.replaceState({}, "", "/runs/run-1/cases/case-a");
+  window.dispatchEvent(new window.PopStateEvent("popstate"));
+  await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "1 / 2"));
+
+  const esrTab = document.querySelector("#tab-esr");
+  esrTab.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }));
+  assert.equal(document.activeElement.id, "tab-level");
+  assert.equal(document.querySelector("#tab-level").getAttribute("aria-selected"), "true");
+  assert.equal(document.querySelector("#case-chart").dataset.metric, "level_db");
+  assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Candidate/);
+});
+
+test("a transient live-refresh failure keeps the populated inspector visible and retries", async () => {
+  const { requests, timers, window } = await setup({
+    captureTimers: true,
+    failAfterDetailRequests: 1,
+    runStatus: "running",
+  });
+  const document = window.document;
+
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 2_000);
+  timers[0].callback();
+  await waitFor(() => assert.equal(requests.filter((url) => url.endsWith("/detail")).length, 2));
+  await waitFor(() => assert.equal(timers.length, 2));
+
+  assert.equal(document.querySelector("#detail-content").hidden, false);
+  assert.equal(document.querySelector("#detail-error").hidden, true);
+});

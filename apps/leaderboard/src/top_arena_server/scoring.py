@@ -135,6 +135,10 @@ class ScoringService:
             run_case.esr = metrics.esr
             run_case.human_weighted_esr = metrics.human_weighted_esr
             run_case.mrstft = metrics.mrstft
+            run_case.level_db = metrics.level_db
+            run_case.peak_db = metrics.peak_db
+            run_case.correlation = metrics.correlation
+            run_case.analysis = dict(metrics.analysis)
             run_case.scored_at = now_utc()
             session.add(
                 RunEvent(
@@ -145,6 +149,9 @@ class ScoringService:
                         "esr": metrics.esr,
                         "human_weighted_esr": metrics.human_weighted_esr,
                         "mrstft": metrics.mrstft,
+                        "level_db": metrics.level_db,
+                        "peak_db": metrics.peak_db,
+                        "correlation": metrics.correlation,
                     },
                 )
             )
@@ -249,9 +256,15 @@ def _summary(values: Sequence[float], *, higher_is_better: bool = False) -> dict
 def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
     return {
         "contract": {
-            "version": "top-arena-audio-v1",
+            "version": "top-arena-audio-v2",
             "sample_rate": 48_000,
             "esr_epsilon": 1e-12,
+            "analysis": {
+                "version": "top-arena-case-analysis-v1",
+                "window_seconds": 0.1,
+                "hop_seconds": 0.1,
+                "dbfs_floor": -120.0,
+            },
             "human_weighting": "A-weighted spectral ESR",
             "mrstft": [
                 {"fft": 512, "hop": 50, "window": 240},
@@ -264,6 +277,12 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             [value for row in rows if (value := row.human_weighted_esr) is not None]
         ),
         "mrstft": _summary([value for row in rows if (value := row.mrstft) is not None]),
+        "level_db": _summary([value for row in rows if (value := row.level_db) is not None]),
+        "peak_db": _summary([value for row in rows if (value := row.peak_db) is not None]),
+        "correlation": _summary(
+            [value for row in rows if (value := row.correlation) is not None],
+            higher_is_better=True,
+        ),
         "realtime_x": _summary(
             [value for row in rows if (value := row.realtime_x) is not None],
             higher_is_better=True,

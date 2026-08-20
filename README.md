@@ -81,6 +81,21 @@ Every completed run stores mean, P90, worst, and best summaries. The metric cont
 FFT configuration are versioned with the result. The dashboard also plots the
 minimization Pareto frontier for mean ESR versus unique positions used.
 
+Each leaderboard model links to a lazy-loaded run inspector. Its canonical URL is
+`/runs/{run_id}/cases/{case_id}`, so the selected benchmark case survives copied links
+and browser navigation. The inspector loads only a lightweight 50-case index and the
+currently selected case; dry, reference-wet, and candidate-wet audio stay unloaded until
+playback starts.
+
+The case inspector adds three comparison statistics:
+
+- Level Δ: absolute difference between candidate and reference RMS level in dBFS.
+- Peak Δ: absolute difference between candidate and reference peak level in dBFS.
+- Correlation: zero-lag Pearson correlation from −1 to 1, where higher is better.
+
+Its chart stores a versioned point every 100 ms for ESR, reference/candidate RMS level,
+reference/candidate peak level, and correlation. Silence uses a finite −120 dBFS floor.
+
 ## Local development
 
 The workspace targets regular CPython 3.13 and 3.14 and locks current stable dependencies

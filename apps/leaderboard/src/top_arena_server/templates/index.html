@@ -201,7 +201,7 @@
                 <tr>
                   <td class="rank-cell" data-label="Rank">{{ loop.index }}</td>
                   <td class="model-cell" data-label="Model">
-                    <strong>{{ run.name|default("Untitled model", true) }}</strong>
+                    <strong><a class="model-link" href="/runs/{{ run.id }}">{{ run.name|default("Untitled model", true) }}</a></strong>
                     <span>by {{ run.creator|default("Anonymous", true) }}</span>
                     {% if run.description|default("", true) %}<p>{{ run.description }}</p>{% endif %}
                     <dl class="model-metadata">

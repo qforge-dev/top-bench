@@ -4,10 +4,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -28,6 +28,12 @@ from .schemas import (
     LeaderboardResponse,
     ManifestCase,
     ManifestResponse,
+    RunCaseAnalysisResponse,
+    RunCaseAudioResponse,
+    RunCaseDetailResponse,
+    RunCaseIndexItem,
+    RunCaseIndexResponse,
+    RunCaseMetricsResponse,
     RunResponse,
 )
 from .scoring import ScoringService
@@ -42,6 +48,14 @@ class Services:
     scoring: ScoringService
 
 
+@dataclass(frozen=True, slots=True)
+class CaseLocation:
+    case_id: str
+    status: str
+    chunk_index: int
+    position_index: int
+
+
 def _case_response(run_case: RunCase) -> CaseResultResponse:
     return CaseResultResponse(
         case_id=run_case.benchmark_case_id,
@@ -50,7 +64,18 @@ def _case_response(run_case: RunCase) -> CaseResultResponse:
         esr=run_case.esr,
         human_weighted_esr=run_case.human_weighted_esr,
         mrstft=run_case.mrstft,
+        level_db=run_case.level_db,
+        peak_db=run_case.peak_db,
+        correlation=run_case.correlation,
     )
+
+
+def _case_page_url(run_id: str, case_id: str) -> str:
+    return f"/runs/{run_id}/cases/{case_id}"
+
+
+def _case_audio_url(run_id: str, case_id: str, kind: str) -> str:
+    return f"/api/v1/runs/{run_id}/cases/{case_id}/audio/{kind}"
 
 
 def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunResponse:
@@ -83,10 +108,51 @@ async def _load_run(services: Services, run_id: str) -> BenchmarkRun | None:
             "BenchmarkRun | None",
             await session.scalar(
                 select(BenchmarkRun)
-                .options(joinedload(BenchmarkRun.amp), selectinload(BenchmarkRun.cases))
+                .options(
+                    joinedload(BenchmarkRun.amp),
+                    selectinload(BenchmarkRun.cases).defer(RunCase.analysis),
+                )
                 .where(BenchmarkRun.id == run_id)
             ),
         )
+
+
+async def _load_case_locations(
+    services: Services, run_id: str
+) -> tuple[BenchmarkRun | None, list[CaseLocation]]:
+    async with services.database.session() as session:
+        run = cast(
+            "BenchmarkRun | None",
+            await session.scalar(
+                select(BenchmarkRun)
+                .options(joinedload(BenchmarkRun.amp))
+                .where(BenchmarkRun.id == run_id)
+            ),
+        )
+        if run is None:
+            return None, []
+        rows = (
+            await session.execute(
+                select(
+                    RunCase.benchmark_case_id,
+                    RunCase.status,
+                    BenchmarkCase.chunk_index,
+                    BenchmarkCase.position_index,
+                )
+                .join(BenchmarkCase, BenchmarkCase.id == RunCase.benchmark_case_id)
+                .where(RunCase.run_id == run_id)
+                .order_by(BenchmarkCase.chunk_index, BenchmarkCase.position_index)
+            )
+        ).all()
+    return run, [
+        CaseLocation(
+            case_id=case_id,
+            status=case_status,
+            chunk_index=chunk_index,
+            position_index=position_index,
+        )
+        for case_id, case_status, chunk_index, position_index in rows
+    ]
 
 
 async def _leaderboard_runs(
@@ -366,6 +432,137 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _run_response(run)
 
     @app.get(
+        "/api/v1/runs/{run_id}/case-index",
+        response_model=RunCaseIndexResponse,
+        tags=["runs"],
+    )
+    async def case_index(run_id: str) -> RunCaseIndexResponse:
+        run, locations = await _load_case_locations(services, run_id)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        return RunCaseIndexResponse(
+            run=_run_response(run, include_cases=False),
+            cases=[
+                RunCaseIndexItem(
+                    case_id=location.case_id,
+                    index=index,
+                    chunk_index=location.chunk_index,
+                    position_index=location.position_index,
+                    status=location.status,
+                    url=_case_page_url(run_id, location.case_id),
+                )
+                for index, location in enumerate(locations, start=1)
+            ],
+        )
+
+    @app.get(
+        "/api/v1/runs/{run_id}/cases/{case_id}/detail",
+        response_model=RunCaseDetailResponse,
+        tags=["runs"],
+    )
+    async def case_detail(run_id: str, case_id: str) -> RunCaseDetailResponse:
+        run, locations = await _load_case_locations(services, run_id)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        zero_based_index = next(
+            (index for index, location in enumerate(locations) if location.case_id == case_id),
+            None,
+        )
+        if zero_based_index is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+
+        async with database.session() as session:
+            row = (
+                await session.execute(
+                    select(RunCase, BenchmarkCase)
+                    .join(BenchmarkCase, BenchmarkCase.id == RunCase.benchmark_case_id)
+                    .where(
+                        RunCase.run_id == run_id,
+                        RunCase.benchmark_case_id == case_id,
+                    )
+                )
+            ).one_or_none()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+        run_case, benchmark_case = row
+        previous_location = locations[zero_based_index - 1] if zero_based_index > 0 else None
+        next_location = (
+            locations[zero_based_index + 1] if zero_based_index + 1 < len(locations) else None
+        )
+        candidate_url = (
+            _case_audio_url(run_id, case_id, "candidate")
+            if run_case.candidate_wet_key is not None
+            else None
+        )
+        return RunCaseDetailResponse(
+            run=_run_response(run, include_cases=False),
+            case_id=case_id,
+            index=zero_based_index + 1,
+            total=len(locations),
+            chunk_index=benchmark_case.chunk_index,
+            position_index=benchmark_case.position_index,
+            status=run_case.status,
+            positions=benchmark_case.position_matrix,
+            control_names=run.amp.control_names,
+            duration_seconds=benchmark_case.duration_seconds,
+            sample_rate=benchmark_case.sample_rate,
+            metrics=RunCaseMetricsResponse(
+                realtime_x=run_case.realtime_x,
+                esr=run_case.esr,
+                human_weighted_esr=run_case.human_weighted_esr,
+                mrstft=run_case.mrstft,
+                level_db=run_case.level_db,
+                peak_db=run_case.peak_db,
+                correlation=run_case.correlation,
+            ),
+            analysis=RunCaseAnalysisResponse.model_validate(run_case.analysis or {}),
+            audio=RunCaseAudioResponse(
+                dry=_case_audio_url(run_id, case_id, "dry"),
+                reference=_case_audio_url(run_id, case_id, "reference"),
+                candidate=candidate_url,
+            ),
+            url=_case_page_url(run_id, case_id),
+            previous_url=(
+                _case_page_url(run_id, previous_location.case_id)
+                if previous_location is not None
+                else None
+            ),
+            next_url=(
+                _case_page_url(run_id, next_location.case_id) if next_location is not None else None
+            ),
+        )
+
+    @app.get(
+        "/api/v1/runs/{run_id}/cases/{case_id}/audio/{kind}",
+        tags=["runs"],
+        response_class=Response,
+    )
+    async def case_audio(
+        run_id: str,
+        case_id: str,
+        kind: Literal["dry", "reference", "candidate"],
+    ) -> Response:
+        key_column = {
+            "dry": BenchmarkCase.dry_key,
+            "reference": BenchmarkCase.reference_wet_key,
+            "candidate": RunCase.candidate_wet_key,
+        }[kind]
+        async with database.session() as session:
+            object_key = await session.scalar(
+                select(key_column)
+                .select_from(RunCase)
+                .join(BenchmarkCase, BenchmarkCase.id == RunCase.benchmark_case_id)
+                .where(
+                    RunCase.run_id == run_id,
+                    RunCase.benchmark_case_id == case_id,
+                )
+            )
+        if object_key is None or not await storage.exists(object_key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"{kind} audio not found")
+        value = await storage.get(object_key)
+        return Response(content=value, media_type="audio/wav")
+
+    @app.get(
         "/api/v1/runs/{run_id}/events",
         response_model=EventsResponse,
         tags=["events"],
@@ -416,6 +613,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runs=runs,
             amp_types=sorted({run.amp_type for run in runs}),
             creators=sorted({run.creator for run in runs}),
+        )
+
+    @app.get("/runs/{run_id}", include_in_schema=False)
+    async def run_detail_redirect(run_id: str) -> RedirectResponse:
+        run, locations = await _load_case_locations(services, run_id)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        if not locations:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run has no cases")
+        return RedirectResponse(_case_page_url(run_id, locations[0].case_id))
+
+    @app.get(
+        "/runs/{run_id}/cases/{case_id}",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
+    async def run_case_page(request: Request, run_id: str, case_id: str) -> Response:
+        async with database.session() as session:
+            run_name = await session.scalar(
+                select(BenchmarkRun.name)
+                .join(RunCase, RunCase.run_id == BenchmarkRun.id)
+                .where(
+                    BenchmarkRun.id == run_id,
+                    RunCase.benchmark_case_id == case_id,
+                )
+            )
+        if run_name is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+        return templates.TemplateResponse(
+            request=request,
+            name="run_detail.html",
+            context={
+                "run_id": run_id,
+                "case_id": case_id,
+                "run_name": run_name,
+                "page_title": f"{run_name} · Case detail",
+            },
         )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

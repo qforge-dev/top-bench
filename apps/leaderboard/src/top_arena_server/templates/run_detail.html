@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0e13">
+    {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
+    <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
+    <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/case_detail.css">
+    <script defer src="/static/case_detail.js"></script>
+  </head>
+  <body class="detail-page">
+    <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Top Arena home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <path d="M6 25V11M12 29V7M18 24V12M24 27V9M30 22V14"></path>
+        </svg>
+        <span>TOP <b>ARENA</b></span>
+      </a>
+      <a class="back-link" href="/">
+        <span aria-hidden="true">←</span>
+        Leaderboard
+      </a>
+    </header>
+
+    <main
+      id="run-detail"
+      class="detail-main"
+      data-run-id="{{ run_id }}"
+      data-case-id="{{ case_id|default('', true) }}"
+      aria-busy="true"
+    >
+      <section id="detail-loading" class="detail-state panel" aria-live="polite">
+        <span class="loading-mark" aria-hidden="true"></span>
+        <div>
+          <p class="eyebrow">Loading benchmark</p>
+          <h1>Preparing the signal view…</h1>
+        </div>
+      </section>
+
+      <section id="detail-error" class="detail-state panel" role="alert" hidden>
+        <span class="state-symbol" aria-hidden="true">!</span>
+        <div>
+          <p class="eyebrow">Could not load this run</p>
+          <h1>Signal temporarily unavailable</h1>
+          <p id="detail-error-message">The benchmark details could not be loaded.</p>
+          <button id="retry-detail" class="action-button" type="button">Try again</button>
+        </div>
+      </section>
+
+      <section id="detail-empty" class="detail-state panel" hidden>
+        <span class="state-symbol" aria-hidden="true">0</span>
+        <div>
+          <p class="eyebrow">No test cases</p>
+          <h1>This run has no audio to inspect yet</h1>
+          <p>When its benchmark manifest is ready, individual cases will appear here.</p>
+          <a class="action-button" href="/">Return to leaderboard</a>
+        </div>
+      </section>
+
+      <div id="detail-content" hidden>
+        <section class="run-overview" aria-labelledby="run-name">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="/">Leaderboard</a><span aria-hidden="true">/</span><span>Run summary</span>
+          </nav>
+          <div class="run-title-row">
+            <div class="run-copy">
+              <p class="eyebrow">Benchmark run <span id="run-status" class="detail-status">Loading</span></p>
+              <h1 id="run-name">{{ run_name|default("Benchmark run", true) }}</h1>
+              <p id="run-description" class="run-description"></p>
+              <p class="run-byline">
+                <span>By <strong id="run-creator">—</strong></span>
+                <span aria-hidden="true">·</span>
+                <span id="run-amp">—</span>
+              </p>
+            </div>
+          </div>
+          <dl id="run-summary" class="run-summary" aria-label="Aggregate run statistics"></dl>
+        </section>
+
+        <section id="case-inspector" class="case-inspector" aria-labelledby="case-title">
+          <div class="case-toolbar">
+            <div>
+              <p class="eyebrow">Signal inspector</p>
+              <h2 id="case-title">Test case detail</h2>
+            </div>
+            <div class="case-navigation" aria-label="Choose a test case">
+              <button id="previous-case" class="case-arrow" type="button" aria-label="Previous test case">
+                <span aria-hidden="true">←</span>
+              </button>
+              <label class="case-picker">
+                <span class="sr-only">Test case</span>
+                <select id="case-select" aria-label="Test case"></select>
+              </label>
+              <output id="case-position" class="case-position" for="case-select">— / —</output>
+              <button id="next-case" class="case-arrow" type="button" aria-label="Next test case">
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="case-identity">
+            <div>
+              <p id="case-label" class="case-label">Test —</p>
+              <p id="case-meta" class="case-meta"></p>
+            </div>
+            <div id="position-chips" class="position-chips" aria-label="Amp positions"></div>
+          </div>
+
+          <dl id="case-metrics" class="case-metrics" aria-label="Selected case scores"></dl>
+
+          <section class="audio-section" aria-labelledby="audio-title">
+            <div class="subsection-heading">
+              <div>
+                <p class="eyebrow">Listen side by side</p>
+                <h3 id="audio-title">Audio comparison</h3>
+              </div>
+              <p>Audio loads only when you press play.</p>
+            </div>
+            <div class="audio-grid">
+              <article class="audio-card">
+                <div class="audio-card-heading">
+                  <div><span class="audio-index">01</span><h4>Dry input</h4></div>
+                  <span class="audio-role">Source</span>
+                </div>
+                <p>The unprocessed signal supplied to both models.</p>
+                <audio id="dry-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                <a id="dry-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
+              </article>
+              <article class="audio-card audio-card-reference">
+                <div class="audio-card-heading">
+                  <div><span class="audio-index">02</span><h4>Reference wet</h4></div>
+                  <span class="audio-role">Target</span>
+                </div>
+                <p>The captured Bias-X amplifier output used as ground truth.</p>
+                <audio id="reference-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                <a id="reference-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
+              </article>
+              <article class="audio-card audio-card-candidate">
+                <div class="audio-card-heading">
+                  <div><span class="audio-index">03</span><h4>Model wet</h4></div>
+                  <span class="audio-role">Candidate</span>
+                </div>
+                <p>The selected model's output for this exact input and position.</p>
+                <audio id="candidate-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                <p id="candidate-missing" class="audio-missing" hidden>Candidate audio has not been uploaded yet.</p>
+                <a id="candidate-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
+              </article>
+            </div>
+          </section>
+
+          <section class="analysis-panel panel" aria-labelledby="analysis-title">
+            <div class="analysis-heading">
+              <div>
+                <p class="eyebrow">Windowed analysis</p>
+                <h3 id="analysis-title">Score over time</h3>
+                <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
+              </div>
+              <div class="metric-tabs" role="tablist" aria-label="Chart metric">
+                <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" aria-controls="chart-panel" tabindex="0" type="button">ESR</button>
+                <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Level dB</button>
+                <button id="tab-peak" role="tab" data-metric="peak_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Peak dB</button>
+                <button id="tab-correlation" role="tab" data-metric="correlation" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Correlation</button>
+              </div>
+            </div>
+            <div id="chart-panel" role="tabpanel" aria-labelledby="tab-esr">
+              <div id="case-chart-legend" class="case-chart-legend" aria-label="Chart legend"></div>
+              <div class="case-chart-shell">
+                <svg
+                  id="case-chart"
+                  class="case-chart"
+                  viewBox="0 0 1000 420"
+                  role="img"
+                  aria-labelledby="analysis-title chart-summary"
+                ></svg>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <p>Top Arena <span aria-hidden="true">·</span> Reproducible audio model benchmarks</p>
+      <p>Case audio is fetched on demand.</p>
+    </footer>
+  </body>
+</html>

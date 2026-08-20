@@ -178,7 +178,11 @@
   function modelCell(run) {
     const cell = createElement("td", "model-cell");
     cell.dataset.label = "Model";
-    cell.append(createElement("strong", "", run.name), createElement("span", "", `by ${run.creator}`));
+    const heading = createElement("strong");
+    const link = createElement("a", "model-link", run.name);
+    link.href = `/runs/${encodeURIComponent(run.id)}`;
+    heading.append(link);
+    cell.append(heading, createElement("span", "", `by ${run.creator}`));
     if (run.description) {
       cell.append(createElement("p", "", run.description));
     }
