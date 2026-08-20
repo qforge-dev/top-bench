@@ -29,6 +29,9 @@ class CorpusConfig:
     sounds_per_source: int = 5
     position_count: int = 10
     benchmark_sounds_per_position: int = 5
+    download_workers: int = 8
+    upload_workers: int = 8
+    max_pending_uploads: int = 32
     true_peak_cap_db: float = -1.0
     max_loudness_error_lu: float = 2.0
     seed: int = 630_048

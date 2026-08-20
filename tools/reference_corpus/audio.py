@@ -6,6 +6,7 @@ import logging
 import math
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -127,6 +128,22 @@ def prepare_dry(config: CorpusConfig, candidates_csv: Path, *, upload: bool = Tr
     if len(sources) * config.sounds_per_source != config.sound_count:
         msg = "the source-balanced selection does not produce 50 sounds"
         raise ValueError(msg)
+
+    # Prime enough candidates for every source concurrently. Selection and
+    # loudness analysis can then proceed from local files without serial S3 waits.
+    prefetch = [
+        row
+        for source in sources
+        for row in [item for item in rows if item["source_name"] == source][:8]
+    ]
+
+    def download(row: dict[str, str]) -> None:
+        path = cache_dir / f"{row['recording_id']}.wav"
+        if not path.exists():
+            s3_download(row["dry_s3_uri"], path)
+
+    with ThreadPoolExecutor(max_workers=config.download_workers) as executor:
+        list(executor.map(download, prefetch))
 
     selected: list[dict[str, Any]] = []
     for source in sources:

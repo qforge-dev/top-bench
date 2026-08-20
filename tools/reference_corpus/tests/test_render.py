@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tools.reference_corpus.config import CorpusConfig
-from tools.reference_corpus.render import _chain_for_amp
+from tools.reference_corpus.render import _chain_for_amp, _upload_render
 
 
 def test_chain_uses_control_indices_and_selected_values() -> None:
@@ -22,3 +22,20 @@ def test_chain_uses_control_indices_and_selected_values() -> None:
     module = next(item for item in chain["sigPath"] if item.get("dspId") == "BiasOneAmp")
     assert module["ampId"] == "AMP-ID"
     assert module["param"] == [{"id": 0, "value": 0.2}, {"id": 3, "value": 0.8}]
+
+
+def test_upload_removes_staging_only_after_success(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "wet.flac"
+    output.write_bytes(b"fLaC")
+    calls = []
+
+    def upload(path, destination):
+        assert path.exists()
+        calls.append((path, destination))
+
+    monkeypatch.setattr("tools.reference_corpus.render.s3_upload", upload)
+    row = {"object_key": "corpus/wet.flac"}
+    result = _upload_render(CorpusConfig(bucket="bucket"), output, row)
+    assert result is row
+    assert calls == [(output, "s3://bucket/corpus/wet.flac")]
+    assert not output.exists()

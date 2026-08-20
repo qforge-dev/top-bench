@@ -6,6 +6,7 @@ import json
 import logging
 import sqlite3
 import sys
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
@@ -76,6 +77,9 @@ class RenderState:
         ).fetchone()
         return row is not None
 
+    def count(self) -> int:
+        return int(self.connection.execute("SELECT count(*) FROM renders").fetchone()[0])
+
     def record(self, row: dict[str, Any]) -> None:
         self.connection.execute(
             """
@@ -131,6 +135,37 @@ def _sync_render_manifest(config: CorpusConfig, state: RenderState) -> None:
     s3_upload(path, f"{config.s3_root}/manifests/renders.json")
 
 
+def _upload_render(
+    config: CorpusConfig,
+    output: Path,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    s3_upload(output, f"s3://{config.bucket}/{row['object_key']}")
+    output.unlink()
+    return row
+
+
+def _collect_uploads(
+    pending: set[Future[dict[str, Any]]],
+    state: RenderState,
+    *,
+    block: bool,
+) -> list[dict[str, Any]]:
+    if not pending:
+        return []
+    if block:
+        completed, _ = wait(pending, return_when=FIRST_COMPLETED)
+    else:
+        completed = {future for future in pending if future.done()}
+    rows: list[dict[str, Any]] = []
+    for future in completed:
+        row = future.result()
+        state.record(row)
+        pending.remove(future)
+        rows.append(row)
+    return rows
+
+
 def render(
     config: CorpusConfig,
     selectors: list[str],
@@ -138,6 +173,8 @@ def render(
     sound_limit: int | None = None,
     position_limit: int | None = None,
     verify_s3: bool = False,
+    upload_workers: int | None = None,
+    max_pending_uploads: int | None = None,
 ) -> None:
     from pedalboard import load_plugin  # noqa: PLC0415
 
@@ -150,70 +187,92 @@ def render(
     state = RenderState(config.root / "state" / "renders.sqlite3")
     staging = config.root / "staging"
     staging.mkdir(parents=True, exist_ok=True)
-    total = sum(min(len(amp["positions"]), position_limit or 10**9) for amp in amps) * len(sounds)
-    completed_this_run = 0
-    for amp in amps:
-        for position in list(amp["positions"])[:position_limit]:
-            chain = _chain_for_amp(config, amp, position)
-            chain_path = staging / "active-chain.json"
-            write_json(chain_path, chain)
-            mapper.apply_chain_file(plugin, chain_path)
-            for sound in sounds:
-                key = (
-                    f"{config.prefix}/wet/{amp['amp_id']}/"
-                    f"{position['position_id']}/{sound['sound_id']}.flac"
-                )
-                if state.contains(key) or (verify_s3 and s3_exists(config.bucket, key)):
-                    continue
-                dry_path = config.root / sound["file"]
-                audio, rate = sf.read(dry_path, always_2d=True, dtype="float32")
-                if rate != config.sample_rate or audio.shape[1] != 1:
-                    msg = f"unexpected dry format: {dry_path}"
-                    raise ValueError(msg)
-                plugin.process(
-                    np.zeros((1, config.sample_rate), dtype=np.float32),
-                    sample_rate=config.sample_rate,
-                    buffer_size=8192,
-                    reset=True,
-                )
-                wet = plugin.process(
-                    audio.T,
-                    sample_rate=config.sample_rate,
-                    buffer_size=8192,
-                    reset=False,
-                )
-                if wet.shape != (1, len(audio)) or not np.all(np.isfinite(wet)):
-                    msg = f"invalid plugin output for {key}"
-                    raise RuntimeError(msg)
-                output = (
-                    staging
-                    / f"{amp['amp_id']}--{position['position_id']}--{sound['sound_id']}.flac"
-                )
-                sf.write(output, wet[0], config.sample_rate, format="FLAC", subtype="PCM_24")
-                s3_upload(output, f"s3://{config.bucket}/{key}")
-                row = {
-                    "object_key": key,
-                    "amp_id": amp["amp_id"],
-                    "position_id": position["position_id"],
-                    "sound_id": sound["sound_id"],
-                    "sha256": sha256(output),
-                    "frames": len(audio),
-                    "peak": float(np.max(np.abs(wet), initial=0.0)),
-                    "uploaded_at": datetime.now(UTC).isoformat(),
-                }
-                state.record(row)
-                output.unlink()
-                completed_this_run += 1
-                LOGGER.info(
-                    "[%d/%d] %s %s %s uploaded",
-                    completed_this_run,
-                    total,
-                    amp["amp_name"],
-                    position["position_id"],
-                    sound["sound_id"],
-                )
-                if completed_this_run % 100 == 0:
-                    _sync_render_manifest(config, state)
+    total = sum(len(amp["positions"]) for amp in amp_manifest["amps"]) * len(dry["sounds"])
+    worker_count = upload_workers or config.upload_workers
+    queue_limit = max_pending_uploads or config.max_pending_uploads
+    if worker_count < 1 or queue_limit < worker_count:
+        msg = "upload queue must be at least as large as the worker count"
+        raise ValueError(msg)
+    pending: set[Future[dict[str, Any]]] = set()
+    completed_global = state.count()
+
+    def account(rows: list[dict[str, Any]]) -> None:
+        nonlocal completed_global
+        for row in rows:
+            completed_global += 1
+            LOGGER.info(
+                "[%d/%d] %s %s %s uploaded",
+                completed_global,
+                total,
+                row["amp_name"],
+                row["position_id"],
+                row["sound_id"],
+            )
+            if completed_global % 100 == 0:
+                _sync_render_manifest(config, state)
+
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="s3-upload") as uploads:
+        for amp in amps:
+            for position in list(amp["positions"])[:position_limit]:
+                chain = _chain_for_amp(config, amp, position)
+                chain_path = staging / "active-chain.json"
+                write_json(chain_path, chain)
+                mapper.apply_chain_file(plugin, chain_path)
+                for sound in sounds:
+                    key = (
+                        f"{config.prefix}/wet/{amp['amp_id']}/"
+                        f"{position['position_id']}/{sound['sound_id']}.flac"
+                    )
+                    if state.contains(key) or (verify_s3 and s3_exists(config.bucket, key)):
+                        continue
+                    while len(pending) >= queue_limit:
+                        account(_collect_uploads(pending, state, block=True))
+                    dry_path = config.root / sound["file"]
+                    audio, rate = sf.read(dry_path, always_2d=True, dtype="float32")
+                    if rate != config.sample_rate or audio.shape[1] != 1:
+                        msg = f"unexpected dry format: {dry_path}"
+                        raise ValueError(msg)
+                    plugin.process(
+                        np.zeros((1, config.sample_rate), dtype=np.float32),
+                        sample_rate=config.sample_rate,
+                        buffer_size=8192,
+                        reset=True,
+                    )
+                    wet = plugin.process(
+                        audio.T,
+                        sample_rate=config.sample_rate,
+                        buffer_size=8192,
+                        reset=False,
+                    )
+                    if wet.shape != (1, len(audio)) or not np.all(np.isfinite(wet)):
+                        msg = f"invalid plugin output for {key}"
+                        raise RuntimeError(msg)
+                    output = (
+                        staging
+                        / f"{amp['amp_id']}--{position['position_id']}--{sound['sound_id']}.flac"
+                    )
+                    sf.write(
+                        output,
+                        wet[0],
+                        config.sample_rate,
+                        format="FLAC",
+                        subtype="PCM_24",
+                    )
+                    row = {
+                        "object_key": key,
+                        "amp_id": amp["amp_id"],
+                        "amp_name": amp["amp_name"],
+                        "position_id": position["position_id"],
+                        "sound_id": sound["sound_id"],
+                        "sha256": sha256(output),
+                        "frames": len(audio),
+                        "peak": float(np.max(np.abs(wet), initial=0.0)),
+                        "uploaded_at": datetime.now(UTC).isoformat(),
+                    }
+                    pending.add(uploads.submit(_upload_render, config, output, row))
+                    account(_collect_uploads(pending, state, block=False))
+        while pending:
+            account(_collect_uploads(pending, state, block=True))
     _sync_render_manifest(config, state)
 
 

@@ -36,12 +36,16 @@ def _parser() -> argparse.ArgumentParser:
     rendering.add_argument("--sound-limit", type=int)
     rendering.add_argument("--position-limit", type=int)
     rendering.add_argument("--verify-s3", action="store_true")
+    rendering.add_argument("--upload-workers", type=int)
+    rendering.add_argument("--max-pending-uploads", type=int)
 
     subparsers.add_parser("benchmark-manifest")
 
     launch = subparsers.add_parser("launch")
     launch.add_argument("--amp", action="append")
     launch.add_argument("--log", type=Path)
+    launch.add_argument("--upload-workers", type=int, default=8)
+    launch.add_argument("--max-pending-uploads", type=int, default=32)
     return parser
 
 
@@ -69,6 +73,8 @@ def main() -> None:
             sound_limit=arguments.sound_limit,
             position_limit=arguments.position_limit,
             verify_s3=arguments.verify_s3,
+            upload_workers=arguments.upload_workers,
+            max_pending_uploads=arguments.max_pending_uploads,
         )
     elif arguments.command == "benchmark-manifest":
         LOGGER.info("benchmark manifest: %s", generate_benchmark_manifest(config))
@@ -85,6 +91,8 @@ def main() -> None:
         ]
         for amp in arguments.amp or ["all"]:
             command.extend(("--amp", amp))
+        command.extend(("--upload-workers", str(arguments.upload_workers)))
+        command.extend(("--max-pending-uploads", str(arguments.max_pending_uploads)))
         with log.open("ab", buffering=0) as output:
             process = subprocess.Popen(  # noqa: S603
                 command,

@@ -18,9 +18,10 @@ $PY -m tools.reference_corpus render --amp "Blackface 63"
 ```
 
 `--amp` accepts an amp name, UUID, catalog index, repeated selectors, or `all`.
-The renderer resets and prerolls the plugin for every dry sound, uploads each wet
-FLAC immediately, records it transactionally in local SQLite, then removes the
-staging file. Re-running the same command resumes from the completed-object state.
+The renderer resets and prerolls the single BIAS X instance for every dry sound.
+It feeds a bounded queue (32 files by default) drained by eight concurrent S3 upload
+workers, records successful uploads transactionally in local SQLite, then removes
+each staging file. Re-running the same command resumes from the completed-object state.
 
 A small two-amp pilot is:
 
