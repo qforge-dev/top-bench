@@ -1,0 +1,40 @@
+[Unit]
+Description=Top Arena benchmark leaderboard
+Documentation=file:///home/ubuntu/top-bench/infra/README.md
+Wants=network-online.target postgresql.service
+After=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/top-bench
+EnvironmentFile=/etc/top-arena/top-arena.env
+Environment=HOME=/home/ubuntu
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=UV_NO_PROGRESS=1
+Environment=UV_PYTHON=3.14
+ExecStartPre=/usr/bin/test -x /home/ubuntu/.local/bin/uv
+ExecStartPre=/usr/bin/test -r /home/ubuntu/top-bench/uv.lock
+ExecStartPre=/home/ubuntu/.local/bin/uv run --frozen --no-sync --package top-arena-leaderboard alembic -c infra/alembic.ini upgrade head
+ExecStart=/home/ubuntu/.local/bin/uv run --frozen --no-sync --package top-arena-leaderboard top-arena-server
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+UMask=0077
+
+# The application only needs network access and read access to its checkout.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

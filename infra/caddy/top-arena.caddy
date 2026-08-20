@@ -1,0 +1,6 @@
+# Import this as a top-level Caddy block. It intentionally leaves the existing
+# IP site and its port-8900 upstream untouched.
+top-arena.54-90-214-165.sslip.io {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8910
+}

@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AmpResponse(ApiModel):
+    id: str
+    name: str
+    amp_type: str
+    control_names: list[str]
+
+
+class ManifestCase(ApiModel):
+    id: str
+    positions: list[list[float]]
+    dry_key: str
+    dry_sha256: str
+    download_url: str
+    duration_seconds: float
+
+
+class ManifestResponse(ApiModel):
+    amp: AmpResponse
+    cases: list[ManifestCase]
+
+
+class CreateRunRequest(ApiModel):
+    amp_id: str
+    name: str
+    creator: str = "anonymous"
+    unique_positions_used: int
+    audio_duration_sum: float
+    turns: int
+    training_time: float
+    description: str
+    parameter_count: int
+
+
+class CreateRunResponse(ApiModel):
+    id: str
+    status: str
+    total_cases: int
+
+
+class EventRequest(ApiModel):
+    kind: str
+    case_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventResponse(ApiModel):
+    id: int
+    kind: str
+    case_id: str | None
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+
+class EventsResponse(ApiModel):
+    events: list[EventResponse]
+    next_after_id: int | None
+
+
+class CaseResultResponse(ApiModel):
+    case_id: str
+    status: str
+    realtime_x: float | None
+    esr: float | None
+    human_weighted_esr: float | None
+    mrstft: float | None
+
+
+class RunResponse(ApiModel):
+    id: str
+    name: str
+    creator: str
+    amp_id: str
+    amp_name: str
+    amp_type: str
+    unique_positions_used: int
+    audio_duration_sum: float
+    turns: int
+    training_time: float
+    description: str
+    parameter_count: int
+    status: str
+    total_cases: int
+    completed_cases: int
+    metrics: dict[str, Any]
+    created_at: datetime
+    completed_at: datetime | None
+    cases: list[CaseResultResponse] = Field(default_factory=list)
+
+
+class LeaderboardResponse(ApiModel):
+    runs: list[RunResponse]
+    amp_types: list[str]
+    creators: list[str]

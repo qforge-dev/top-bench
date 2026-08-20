@@ -1,0 +1,30 @@
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "top-arena-leaderboard"
+version = "0.1.0"
+description = "Top Arena API, scoring worker, and leaderboard dashboard"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+  "aiosqlite>=0.22.1,<0.23",
+  "alembic>=1.19.1,<1.20",
+  "boto3>=1.43.75,<2",
+  "fastapi>=0.141.1,<0.142",
+  "jinja2>=3.1.6,<4",
+  "numpy>=2.5.2,<2.6",
+  "psycopg[binary]>=3.3.4,<4",
+  "pydantic-settings>=2.15.0,<3",
+  "scipy>=1.18.0,<1.19",
+  "soundfile>=0.14.0,<0.15",
+  "sqlalchemy[asyncio]>=2.0.52,<2.1",
+  "uvicorn[standard]>=0.52.4,<0.53",
+]
+
+[project.scripts]
+top-arena-server = "top_arena_server.cli:serve"
+top-arena-seed = "top_arena_server.seed:main"
+
+[tool.uv.build-backend]
+module-name = "top_arena_server"

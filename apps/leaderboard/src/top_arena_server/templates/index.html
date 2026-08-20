@@ -1,0 +1,252 @@
+{% macro number(value, digits=4) -%}
+  {% if value is defined and value is not none %}
+    {{ ("%." ~ digits ~ "f")|format(value|float) }}
+  {% else %}
+    <span class="metric-empty" aria-label="Not available">—</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro metric_summary(metric) -%}
+  {% set values = metric|default({}, true) %}
+  <div class="metric-summary">
+    <strong class="metric-primary">{{ number(values.mean) }}</strong>
+    <dl class="metric-details">
+      <div><dt>P90</dt><dd>{{ number(values.p90) }}</dd></div>
+      <div><dt>Worst</dt><dd>{{ number(values.worst) }}</dd></div>
+      <div><dt>Best</dt><dd>{{ number(values.best) }}</dd></div>
+    </dl>
+  </div>
+{%- endmacro %}
+
+{% set initial_runs = runs|default([], true) %}
+{% set completed_state = namespace(count=0) %}
+{% for initial_run in initial_runs %}
+  {% if initial_run.status|default("") in ["completed", "finished"] %}
+    {% set completed_state.count = completed_state.count + 1 %}
+  {% endif %}
+{% endfor %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0e13">
+    <title>Top Arena · Amp model benchmark</title>
+    <meta
+      name="description"
+      content="A live, reproducible leaderboard for neural amp model benchmarks."
+    >
+    <link rel="stylesheet" href="/static/styles.css">
+    <script defer src="/static/dashboard.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Top Arena home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <path d="M6 25V11M12 29V7M18 24V12M24 27V9M30 22V14" />
+        </svg>
+        <span>TOP <b>ARENA</b></span>
+      </a>
+      <div class="live-indicator" title="Leaderboard refreshes every two seconds">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="connection-label">Live</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Bias-X model benchmark</p>
+          <h1 id="page-title">Hear less hype.<br><em>Measure more.</em></h1>
+          <p class="hero-description">
+            One transparent arena for comparing amp models across identical audio,
+            positions, and scoring criteria. Lower error is better.
+          </p>
+        </div>
+        <dl class="hero-stats" aria-label="Leaderboard summary">
+          <div>
+            <dt>Models</dt>
+            <dd id="summary-run-count">{{ initial_runs|length }}</dd>
+          </div>
+          <div>
+            <dt>Completed</dt>
+            <dd id="summary-completed-count">{{ completed_state.count }}</dd>
+          </div>
+          <div>
+            <dt>Primary score</dt>
+            <dd>ESR</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="chart-panel panel" aria-labelledby="pareto-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Efficiency frontier</p>
+            <h2 id="pareto-title">Accuracy vs. positions</h2>
+          </div>
+          <div class="chart-legend" aria-label="Chart legend">
+            <span><i class="legend-dot" aria-hidden="true"></i> Benchmark run</span>
+            <span><i class="legend-line" aria-hidden="true"></i> Pareto frontier</span>
+          </div>
+        </div>
+        <p id="pareto-description" class="section-description">
+          Mean ESR against unique positions used. The frontier connects models for
+          which neither value can improve without the other getting worse.
+        </p>
+        <div class="chart-shell">
+          <svg
+            id="pareto-chart"
+            class="pareto-chart"
+            viewBox="0 0 960 430"
+            role="img"
+            aria-labelledby="pareto-title pareto-description"
+          >
+            <text class="chart-placeholder" x="480" y="215" text-anchor="middle">
+              Completed runs with scores will appear here
+            </text>
+          </svg>
+          <div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden></div>
+        </div>
+      </section>
+
+      <section id="leaderboard" class="leaderboard-section" aria-labelledby="leaderboard-title">
+        <div class="section-heading leaderboard-heading">
+          <div>
+            <p class="eyebrow">All benchmark runs</p>
+            <h2 id="leaderboard-title">Leaderboard</h2>
+          </div>
+          <p class="refresh-status" id="refresh-status" aria-live="polite">
+            Server-rendered snapshot
+          </p>
+        </div>
+
+        <div class="filters" aria-label="Leaderboard filters">
+          <label class="filter-field filter-search">
+            <span>Find a model</span>
+            <span class="input-shell">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <circle cx="8.5" cy="8.5" r="5.5"></circle>
+                <path d="m13 13 4 4"></path>
+              </svg>
+              <input id="model-filter" type="search" placeholder="Name or description" autocomplete="off">
+            </span>
+          </label>
+          <label class="filter-field">
+            <span>Amp type</span>
+            <select id="amp-filter">
+              <option value="">All amp types</option>
+            </select>
+          </label>
+          <label class="filter-field">
+            <span>Creator</span>
+            <select id="creator-filter">
+              <option value="">All creators</option>
+            </select>
+          </label>
+          <button id="clear-filters" class="clear-button" type="button">Clear filters</button>
+        </div>
+
+        <div class="table-meta">
+          <p id="result-count" aria-live="polite">{{ initial_runs|length }} runs</p>
+          <p><span class="lower-is-better" aria-hidden="true">↓</span> Lower error is better</p>
+        </div>
+
+        <div class="table-frame">
+          <table>
+            <caption class="sr-only">
+              Amp model benchmark results. Use column headings to change the sort order.
+            </caption>
+            <thead>
+              <tr>
+                <th class="rank-column" scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="rank">Rank <span aria-hidden="true">↕</span></button>
+                </th>
+                <th class="model-column" scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="name">Model <span aria-hidden="true">↕</span></button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="amp">Amp <span aria-hidden="true">↕</span></button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="status">Progress <span aria-hidden="true">↕</span></button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="positions">Positions <span aria-hidden="true">↕</span></button>
+                </th>
+                <th scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="realtime">Realtime <span aria-hidden="true">↕</span></button>
+                </th>
+                <th class="metric-column" scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="esr">ESR <small>mean</small> <span aria-hidden="true">↕</span></button>
+                </th>
+                <th class="metric-column" scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="humanWeightedEsr">Human-weighted ESR <span aria-hidden="true">↕</span></button>
+                </th>
+                <th class="metric-column" scope="col" aria-sort="none">
+                  <button class="sort-button" type="button" data-sort="mrstft">MRSTFT <small>mean</small> <span aria-hidden="true">↕</span></button>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+              {% for run in initial_runs %}
+                {% set metrics = run.metrics|default({}, true) %}
+                {% set realtime = metrics.realtime_x|default({}, true) %}
+                {% set completed = run.completed_cases|default(0, true)|int %}
+                {% set total = run.total_cases|default(run.case_count|default(0, true), true)|int %}
+                {% set status = run.status|default("queued", true) %}
+                <tr>
+                  <td class="rank-cell" data-label="Rank">{{ loop.index }}</td>
+                  <td class="model-cell" data-label="Model">
+                    <strong>{{ run.name|default("Untitled model", true) }}</strong>
+                    <span>by {{ run.creator|default("Anonymous", true) }}</span>
+                    {% if run.description|default("", true) %}<p>{{ run.description }}</p>{% endif %}
+                    <dl class="model-metadata">
+                      <div><dt>Params</dt><dd>{{ run.parameter_count|default("—", true) }}</dd></div>
+                      <div><dt>Audio</dt><dd>{{ run.audio_duration_sum|default("—", true) }}s</dd></div>
+                      <div><dt>Turns</dt><dd>{{ run.turns|default("—", true) }}</dd></div>
+                      <div><dt>Training</dt><dd>{{ run.training_time|default("—", true) }}s</dd></div>
+                    </dl>
+                  </td>
+                  <td data-label="Amp">
+                    <strong>{{ run.amp_name|default(run.amp_id|default("Unknown amp", true), true) }}</strong>
+                    <span class="cell-secondary">{{ run.amp_type|default("—", true) }}</span>
+                  </td>
+                  <td data-label="Progress">
+                    <span class="status status-{{ status|lower|replace('_', '-') }}">{{ status|replace('_', ' ')|title }}</span>
+                    <progress value="{{ completed }}" max="{{ total if total > 0 else 1 }}">{{ completed }} of {{ total }}</progress>
+                    <span class="cell-secondary">{{ completed }} / {{ total }}</span>
+                  </td>
+                  <td data-label="Positions" class="numeric-cell">{{ run.unique_positions_used|default("—", true) }}</td>
+                  <td data-label="Realtime" class="numeric-cell">
+                    {% if realtime.mean|default(none) is not none %}{{ number(realtime.mean, 2) }}×{% else %}—{% endif %}
+                  </td>
+                  <td data-label="ESR">{{ metric_summary(metrics.esr) }}</td>
+                  <td data-label="Human-weighted ESR">{{ metric_summary(metrics.human_weighted_esr) }}</td>
+                  <td data-label="MRSTFT">{{ metric_summary(metrics.mrstft) }}</td>
+                </tr>
+              {% else %}
+                <tr class="empty-row">
+                  <td colspan="9">
+                    <strong>No benchmark runs yet</strong>
+                    <span>Start a local benchmark and its progress will appear here.</span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Top Arena <span aria-hidden="true">·</span> Reproducible audio model benchmarks</p>
+      <p>Scores update as benchmark audio is processed.</p>
+    </footer>
+
+    <script id="leaderboard-initial-data" type="application/json">{{ initial_runs|tojson }}</script>
+  </body>
+</html>
