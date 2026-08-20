@@ -1,0 +1,15 @@
+{
+    admin off
+    default_sni 54.90.214.165
+    fallback_sni 54.90.214.165
+}
+
+https://54.90.214.165:443 {
+    tls internal
+    reverse_proxy 127.0.0.1:8900
+    request_body {
+        max_size 35MB
+    }
+}
+
+import /etc/caddy/conf.d/*.caddy

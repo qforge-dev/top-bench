@@ -78,20 +78,17 @@ journalctl -u top-arena -n 100 --no-pager
 
 ## Add the independent Caddy site
 
-First make a recoverable copy of the current configuration. Install the new
-site block, then add this single top-level import to `/etc/caddy/Caddyfile`:
-
-```caddyfile
-import /etc/caddy/conf.d/top-arena.caddy
-```
-
-Commands for the file copy and validation are:
+First compare the checked-in bestia configuration with the live file, then make
+a recoverable copy. The checked-in file preserves the existing IP site and adds
+only an import for independent files under `/etc/caddy/conf.d/`:
 
 ```console
 sudo cp --archive /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-top-arena
 sudo install -D -o root -g root -m 0644 \
   infra/caddy/top-arena.caddy /etc/caddy/conf.d/top-arena.caddy
-sudoedit /etc/caddy/Caddyfile
+diff --unified /etc/caddy/Caddyfile infra/caddy/Caddyfile.bestia || true
+sudo install -o root -g root -m 0644 \
+  infra/caddy/Caddyfile.bestia /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 curl --fail --show-error https://top-arena.54-90-214-165.sslip.io/
