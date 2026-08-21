@@ -8,9 +8,9 @@
     {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
-    <link rel="stylesheet" href="/static/styles.css">
-    <link rel="stylesheet" href="/static/case_detail.css">
-    <script defer src="/static/case_detail.js?v=20260821-esr-axis"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260821-compact-nam">
+    <script defer src="/static/case_detail.js?v=20260821-compact-nam"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -65,16 +65,14 @@
 
       <div id="detail-content" hidden>
         <section class="run-overview" aria-labelledby="run-name">
-          <nav class="breadcrumb" aria-label="Breadcrumb">
-            <a href="/">Leaderboard</a><span aria-hidden="true">/</span><span>Run summary</span>
-          </nav>
           <div class="run-title-row">
             <div class="run-copy">
-              <p class="eyebrow">Benchmark run <span id="run-status" class="detail-status">Loading</span></p>
-              <h1 id="run-name">{{ run_name|default("Benchmark run", true) }}</h1>
-              <p id="run-description" class="run-description"></p>
+              <div class="run-heading-line">
+                <h1 id="run-name">{{ run_name|default("Benchmark run", true) }}</h1>
+                <span id="run-status" class="detail-status">Loading</span>
+              </div>
               <p class="run-byline">
-                <span>By <strong id="run-creator">—</strong></span>
+                <strong id="run-creator">—</strong>
                 <span aria-hidden="true">·</span>
                 <span id="run-amp">—</span>
               </p>
@@ -85,10 +83,7 @@
 
         <section id="case-inspector" class="case-inspector" aria-labelledby="case-title">
           <div class="case-toolbar">
-            <div>
-              <p class="eyebrow">Signal inspector</p>
-              <h2 id="case-title">Test case detail</h2>
-            </div>
+            <h2 id="case-title">Cases</h2>
             <div class="case-navigation" aria-label="Choose a test case">
               <button id="previous-case" class="case-arrow" type="button" aria-label="Previous test case">
                 <span aria-hidden="true">←</span>
@@ -116,40 +111,38 @@
 
           <section class="audio-section" aria-labelledby="audio-title">
             <div class="subsection-heading">
-              <div>
-                <p class="eyebrow">Listen side by side</p>
-                <h3 id="audio-title">Audio comparison</h3>
-              </div>
-              <p>Audio loads only when you press play.</p>
+              <h3 id="audio-title">Audio</h3>
             </div>
             <div class="audio-grid">
               <article class="audio-card">
                 <div class="audio-card-heading">
                   <div><span class="audio-index">01</span><h4>Dry input</h4></div>
-                  <span class="audio-role">Source</span>
                 </div>
-                <p>The unprocessed signal supplied to both models.</p>
                 <audio id="dry-audio" controls preload="none">Your browser does not support audio playback.</audio>
                 <a id="dry-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
               </article>
               <article class="audio-card audio-card-reference">
                 <div class="audio-card-heading">
                   <div><span class="audio-index">02</span><h4>Reference wet</h4></div>
-                  <span class="audio-role">Target</span>
                 </div>
-                <p>The captured Bias-X amplifier output used as ground truth.</p>
                 <audio id="reference-audio" controls preload="none">Your browser does not support audio playback.</audio>
                 <a id="reference-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
               </article>
               <article class="audio-card audio-card-candidate">
                 <div class="audio-card-heading">
                   <div><span class="audio-index">03</span><h4>Model wet</h4></div>
-                  <span class="audio-role">Candidate</span>
                 </div>
-                <p>The selected model's output for this exact input and position.</p>
                 <audio id="candidate-audio" controls preload="none">Your browser does not support audio playback.</audio>
                 <p id="candidate-missing" class="audio-missing" hidden>Candidate audio has not been uploaded yet.</p>
                 <a id="candidate-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
+              </article>
+              <article class="audio-card audio-card-nam">
+                <div class="audio-card-heading">
+                  <div><span class="audio-index">04</span><h4>NAM A2 wet</h4></div>
+                </div>
+                <audio id="nam-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                <p id="nam-missing" class="audio-missing" hidden>NAM baseline audio is unavailable.</p>
+                <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
               </article>
             </div>
           </section>
@@ -157,8 +150,7 @@
           <section class="analysis-panel panel" aria-labelledby="analysis-title">
             <div class="analysis-heading">
               <div>
-                <p class="eyebrow">Windowed analysis</p>
-                <h3 id="analysis-title">Score over time</h3>
+                <h3 id="analysis-title">Analysis</h3>
                 <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
               </div>
               <div class="metric-tabs" role="tablist" aria-label="Chart metric">
@@ -185,9 +177,5 @@
       </div>
     </main>
 
-    <footer>
-      <p>Top Arena <span aria-hidden="true">·</span> Reproducible audio model benchmarks</p>
-      <p>Case audio is fetched on demand.</p>
-    </footer>
   </body>
 </html>

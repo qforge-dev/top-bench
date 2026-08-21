@@ -87,4 +87,10 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
     ["run-pg"],
   );
   assert.equal(document.querySelector("#result-count").textContent, "1 run of 2");
+  const selectedRow = document.querySelector("#leaderboard-body tr");
+  assert.equal(selectedRow.querySelector(".model-cell p"), null);
+  assert.equal(selectedRow.querySelector(".model-metadata"), null);
+  assert.equal(selectedRow.querySelector("progress"), null);
+  assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
+  assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
 });

@@ -163,37 +163,8 @@
     return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
-  function formatCompact(value) {
-    if (value === null) {
-      return "—";
-    }
-    return Intl.NumberFormat(undefined, { maximumFractionDigits: 1, notation: "compact" }).format(value);
-  }
-
-  function formatDuration(seconds) {
-    if (seconds === null) {
-      return "—";
-    }
-    if (seconds < 60) {
-      return `${formatScore(seconds)}s`;
-    }
-    if (seconds < 3_600) {
-      return `${formatScore(seconds / 60)}m`;
-    }
-    return `${formatScore(seconds / 3_600)}h`;
-  }
-
   function titleCase(value) {
     return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }
-
-  function appendMetadata(container, label, value) {
-    if (value === null || value === "") {
-      return;
-    }
-    const wrapper = createElement("div");
-    wrapper.append(createElement("dt", "", label), createElement("dd", "", value));
-    container.append(wrapper);
   }
 
   function modelCell(run) {
@@ -204,23 +175,13 @@
     link.href = `/runs/${encodeURIComponent(run.id)}`;
     heading.append(link);
     cell.append(heading, createElement("span", "", `by ${run.creator}`));
-    if (run.description) {
-      cell.append(createElement("p", "", run.description));
-    }
-
-    const metadata = createElement("dl", "model-metadata");
-    appendMetadata(metadata, "Params", formatCompact(run.parameterCount));
-    appendMetadata(metadata, "Audio", formatDuration(run.audioDuration));
-    appendMetadata(metadata, "Turns", run.turns === null ? "—" : formatScore(run.turns));
-    appendMetadata(metadata, "Training", formatDuration(run.trainingTime));
-    cell.append(metadata);
     return cell;
   }
 
   function ampCell(run) {
     const cell = createElement("td");
     cell.dataset.label = "Amp";
-    cell.append(createElement("strong", "", run.ampName), createElement("span", "cell-secondary", run.ampType));
+    cell.append(createElement("strong", "", run.ampName));
     return cell;
   }
 
@@ -229,12 +190,7 @@
     cell.dataset.label = "Progress";
     const statusClass = run.status.replace(/[^a-z0-9-]+/g, "-");
     cell.append(createElement("span", `status status-${statusClass}`, titleCase(run.status)));
-
-    const progress = createElement("progress");
-    progress.max = Math.max(1, run.totalCases);
-    progress.value = Math.min(run.completedCases, progress.max);
-    progress.setAttribute("aria-label", `${run.completedCases} of ${run.totalCases} cases processed`);
-    cell.append(progress, createElement("span", "cell-secondary", `${run.completedCases} / ${run.totalCases}`));
+    cell.append(createElement("span", "progress-count", `${run.completedCases}/${run.totalCases}`));
     return cell;
   }
 
@@ -245,19 +201,9 @@
   }
 
   function metricCell(label, summary) {
-    const cell = createElement("td");
+    const cell = createElement("td", "numeric-cell");
     cell.dataset.label = label;
-    const wrapper = createElement("div", "metric-summary");
-    wrapper.append(createElement("strong", `metric-primary${summary.mean === null ? " metric-empty" : ""}`, formatScore(summary.mean)));
-
-    const details = createElement("dl", "metric-details");
-    for (const [name, value] of [["P90", summary.p90], ["Worst", summary.worst], ["Best", summary.best]]) {
-      const item = createElement("div");
-      item.append(createElement("dt", "", name), createElement("dd", value === null ? "metric-empty" : "", formatScore(value)));
-      details.append(item);
-    }
-    wrapper.append(details);
-    cell.append(wrapper);
+    cell.append(createElement("strong", `metric-primary${summary.mean === null ? " metric-empty" : ""}`, formatScore(summary.mean)));
     return cell;
   }
 

@@ -518,6 +518,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if run_case.candidate_wet_key is not None
             else None
         )
+        nam_url = (
+            _case_audio_url(run_id, case_id, "nam")
+            if benchmark_case.nam_reference_wet_key is not None
+            else None
+        )
         return RunCaseDetailResponse(
             run=_run_response(run, include_cases=False),
             case_id=case_id,
@@ -550,6 +555,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 dry=_case_audio_url(run_id, case_id, "dry"),
                 reference=_case_audio_url(run_id, case_id, "reference"),
                 candidate=candidate_url,
+                nam=nam_url,
             ),
             url=_case_page_url(run_id, case_id),
             previous_url=(
@@ -570,12 +576,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def case_audio(
         run_id: str,
         case_id: str,
-        kind: Literal["dry", "reference", "candidate"],
+        kind: Literal["dry", "reference", "candidate", "nam"],
     ) -> Response:
         key_column = {
             "dry": BenchmarkCase.dry_key,
             "reference": BenchmarkCase.reference_wet_key,
             "candidate": RunCase.candidate_wet_key,
+            "nam": BenchmarkCase.nam_reference_wet_key,
         }[kind]
         async with database.session() as session:
             object_key = await session.scalar(

@@ -148,6 +148,7 @@ class RunCaseAudioResponse(ApiModel):
     dry: str
     reference: str
     candidate: str | None
+    nam: str | None
 
 
 class RunCaseAnalysisPoint(ApiModel):
@@ -167,6 +168,7 @@ class RunCaseAnalysisResponse(ApiModel):
     window_seconds: float = 0.1
     hop_seconds: float = 0.1
     points: list[RunCaseAnalysisPoint] = Field(default_factory=list)
+    nam_points: list[RunCaseAnalysisPoint] = Field(default_factory=list)
 
 
 class RunCaseDetailResponse(ApiModel):

@@ -157,7 +157,7 @@ class ScoringService:
             run_case.level_db = metrics.level_db
             run_case.peak_db = metrics.peak_db
             run_case.correlation = metrics.correlation
-            run_case.analysis = dict(metrics.analysis)
+            analysis: dict[str, Any] = dict(metrics.analysis)
             if nam_metrics is not None:
                 run_case.nam_esr = nam_metrics.esr
                 run_case.nam_human_weighted_esr = nam_metrics.human_weighted_esr
@@ -165,6 +165,8 @@ class ScoringService:
                 run_case.nam_level_db = nam_metrics.level_db
                 run_case.nam_peak_db = nam_metrics.peak_db
                 run_case.nam_correlation = nam_metrics.correlation
+                analysis["nam_points"] = nam_metrics.analysis["points"]
+            run_case.analysis = analysis
             run_case.scored_at = now_utc()
             session.add(
                 RunEvent(

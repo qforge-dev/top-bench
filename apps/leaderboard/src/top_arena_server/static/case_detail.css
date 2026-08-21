@@ -34,7 +34,7 @@
 
 .detail-main {
   width: min(100% - 40px, 1480px);
-  min-height: calc(100vh - 186px);
+  min-height: calc(100vh - 76px);
   margin-inline: auto;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .run-overview {
-  padding: clamp(58px, 8vw, 112px) 0 72px;
+  padding: 28px 0 20px;
 }
 
 .breadcrumb {
@@ -127,27 +127,33 @@
 .run-title-row {
   display: flex;
   gap: 40px;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
 }
 
 .run-copy {
-  max-width: 930px;
+  width: 100%;
 }
 
 .run-overview h1 {
-  margin-bottom: 22px;
-  font-size: clamp(3rem, 7.5vw, 7.2rem);
-  letter-spacing: -0.065em;
-  line-height: 0.9;
+  margin: 0;
+  font-size: clamp(1.65rem, 3vw, 2.6rem);
+  letter-spacing: -0.045em;
+  line-height: 1.05;
   overflow-wrap: anywhere;
+}
+
+.run-heading-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .detail-status {
   display: inline-flex;
   min-height: 21px;
   padding: 2px 8px;
-  margin-left: 8px;
+  margin-left: 0;
   border: 1px solid #3b4651;
   border-radius: 99px;
   align-items: center;
@@ -190,7 +196,7 @@
 
 .run-byline {
   display: flex;
-  margin-bottom: 0;
+  margin: 8px 0 0;
   gap: 10px;
   color: #7d8993;
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -206,7 +212,7 @@
 
 .run-summary {
   display: grid;
-  margin: 65px 0 0;
+  margin: 18px 0 0;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -214,7 +220,7 @@
 
 .run-summary > div {
   min-width: 0;
-  padding: 22px 17px 20px;
+  padding: 11px 12px 10px;
   border-right: 1px solid var(--line);
 }
 
@@ -237,11 +243,11 @@
 }
 
 .run-summary dd {
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   overflow: hidden;
   color: var(--text);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: clamp(1rem, 2vw, 1.45rem);
+  font-size: clamp(0.9rem, 1.5vw, 1.1rem);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -257,7 +263,7 @@
 }
 
 .case-inspector {
-  padding: 74px 0 115px;
+  padding: 24px 0 48px;
   border-top: 1px solid var(--line-soft);
   scroll-margin-top: 20px;
 }
@@ -265,12 +271,12 @@
 .case-toolbar {
   display: flex;
   gap: 40px;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
 }
 
 .case-toolbar h2 {
-  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
 }
 
 .case-navigation {
@@ -281,7 +287,7 @@
 
 .case-arrow,
 .case-picker select {
-  min-height: 46px;
+  min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background-color: var(--panel);
@@ -290,7 +296,7 @@
 }
 
 .case-arrow {
-  width: 46px;
+  width: 38px;
   padding: 0;
   font-size: 1rem;
 }
@@ -312,7 +318,7 @@
   background-image:
     linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
     linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-  background-position: calc(100% - 17px) 19px, calc(100% - 12px) 19px;
+  background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px;
   background-repeat: no-repeat;
   background-size: 5px 5px;
   appearance: none;
@@ -330,9 +336,9 @@
 
 .case-identity {
   display: flex;
-  min-height: 110px;
-  padding: 28px 0;
-  margin-top: 38px;
+  min-height: 70px;
+  padding: 14px 0;
+  margin-top: 16px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   align-items: center;
@@ -366,7 +372,7 @@
 
 .position-chip {
   display: inline-flex;
-  min-height: 33px;
+  min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--line);
   align-items: center;
@@ -392,7 +398,7 @@
 
 .case-metrics > div {
   min-width: 0;
-  padding: 30px 14px 27px;
+  padding: 14px 10px 12px;
   border-right: 1px solid var(--line-soft);
 }
 
@@ -405,11 +411,11 @@
 }
 
 .case-metrics dd {
-  margin: 9px 0 4px;
+  margin: 4px 0 2px;
   overflow: hidden;
   color: var(--text);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: clamp(1.05rem, 2.1vw, 1.55rem);
+  font-size: clamp(0.9rem, 1.5vw, 1.12rem);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   letter-spacing: -0.05em;
@@ -434,12 +440,12 @@
 }
 
 .audio-section {
-  padding-top: 76px;
+  padding-top: 28px;
 }
 
 .subsection-heading {
   display: flex;
-  margin-bottom: 25px;
+  margin-bottom: 12px;
   align-items: end;
   gap: 30px;
   justify-content: space-between;
@@ -448,7 +454,7 @@
 .subsection-heading h3,
 .analysis-heading h3 {
   margin: 0;
-  font-size: clamp(1.5rem, 2.6vw, 2.2rem);
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
   letter-spacing: -0.04em;
 }
 
@@ -462,12 +468,12 @@
 .audio-grid {
   display: grid;
   gap: 13px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .audio-card {
   min-width: 0;
-  padding: 21px;
+  padding: 13px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: linear-gradient(145deg, rgb(255 255 255 / 2%), transparent 52%), var(--panel);
@@ -479,6 +485,10 @@
 
 .audio-card-candidate {
   border-top-color: rgb(99 179 255 / 50%);
+}
+
+.audio-card-nam {
+  border-top-color: rgb(255 189 92 / 55%);
 }
 
 .audio-card-heading,
@@ -511,8 +521,8 @@
 }
 
 .audio-card > p {
-  min-height: 38px;
-  margin: 17px 0;
+  min-height: 0;
+  margin: 8px 0;
   color: var(--text-muted);
   font-size: 0.7rem;
 }
@@ -521,7 +531,7 @@
   display: block;
   width: 100%;
   height: 38px;
-  margin: 7px 0 15px;
+  margin: 7px 0 10px;
   accent-color: var(--accent);
 }
 
@@ -550,8 +560,8 @@
 }
 
 .analysis-panel {
-  padding: clamp(22px, 4vw, 42px);
-  margin-top: 74px;
+  padding: 18px;
+  margin-top: 30px;
 }
 
 .analysis-heading {
@@ -563,7 +573,7 @@
 
 .chart-summary {
   max-width: 660px;
-  margin: 12px 0 0;
+  margin: 5px 0 0;
   color: var(--text-muted);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 0.64rem;
@@ -604,7 +614,7 @@
 .case-chart-legend {
   display: flex;
   min-height: 34px;
-  margin-top: 28px;
+  margin-top: 14px;
   align-items: center;
   gap: 20px;
   color: var(--text-muted);
@@ -626,12 +636,20 @@
   background: var(--blue);
 }
 
-.case-chart-legend span:nth-child(2) i {
+.case-chart-legend i.tone-reference {
+  background: var(--blue);
+}
+
+.case-chart-legend i.tone-model {
+  background: var(--accent);
+}
+
+.case-chart-legend i.tone-nam {
   background: var(--amber);
 }
 
 .case-chart-shell {
-  min-height: 340px;
+  min-height: 280px;
   border-top: 1px solid var(--line-soft);
   overflow-x: auto;
 }
@@ -641,7 +659,7 @@
   width: 100%;
   min-width: 680px;
   height: auto;
-  min-height: 340px;
+  min-height: 280px;
 }
 
 .case-chart .chart-grid {
@@ -683,7 +701,15 @@
   vector-effect: non-scaling-stroke;
 }
 
-.case-chart .chart-series.secondary {
+.case-chart .chart-series.tone-reference {
+  stroke: var(--blue);
+}
+
+.case-chart .chart-series.tone-model {
+  stroke: var(--accent);
+}
+
+.case-chart .chart-series.tone-nam {
   stroke: var(--amber);
   stroke-width: 1.8;
 }
@@ -694,11 +720,23 @@
   stroke-width: 3;
 }
 
-.case-chart .chart-endpoint.secondary {
+.case-chart .chart-endpoint.tone-reference {
+  fill: var(--blue);
+}
+
+.case-chart .chart-endpoint.tone-model {
+  fill: var(--accent);
+}
+
+.case-chart .chart-endpoint.tone-nam {
   fill: var(--amber);
 }
 
 @media (max-width: 1120px) {
+  .audio-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .run-summary {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -758,10 +796,6 @@
     justify-content: start;
   }
 
-  .audio-grid {
-    grid-template-columns: 1fr;
-  }
-
   .audio-card > p {
     min-height: 0;
   }
@@ -774,15 +808,11 @@
 
 @media (max-width: 600px) {
   .run-overview {
-    padding-top: 52px;
-  }
-
-  .breadcrumb {
-    margin-bottom: 34px;
+    padding-top: 22px;
   }
 
   .run-overview h1 {
-    font-size: clamp(2.8rem, 15vw, 5rem);
+    font-size: clamp(1.4rem, 7vw, 2rem);
   }
 
   .run-byline {
@@ -830,6 +860,10 @@
 
   .audio-card {
     padding: 17px;
+  }
+
+  .audio-grid {
+    grid-template-columns: 1fr;
   }
 
   .analysis-panel {

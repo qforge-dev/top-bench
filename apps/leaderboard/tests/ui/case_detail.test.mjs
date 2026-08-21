@@ -52,6 +52,12 @@ function detail(caseId, index) {
       level_db: 0.5 + offset,
       peak_db: 0.3 + offset,
       correlation: 0.98 - offset,
+      nam_esr: 0.03 + offset,
+      nam_human_weighted_esr: 0.028 + offset,
+      nam_mrstft: 0.12 + offset,
+      nam_level_db: 0.6 + offset,
+      nam_peak_db: 0.4 + offset,
+      nam_correlation: 0.96 - offset,
     },
     analysis: {
       version: "top-arena-case-analysis-v1",
@@ -77,11 +83,32 @@ function detail(caseId, index) {
           correlation: 0.95 - offset,
         },
       ],
+      nam_points: [
+        {
+          time_seconds: 0,
+          esr: 0.02 + offset,
+          reference_level_db: -15.5,
+          candidate_level_db: -14,
+          reference_peak_db: -2.4,
+          candidate_peak_db: -1.8,
+          correlation: -0.3,
+        },
+        {
+          time_seconds: 5,
+          esr: 0.03 + offset,
+          reference_level_db: -13.4,
+          candidate_level_db: -12.5,
+          reference_peak_db: -1.9,
+          candidate_peak_db: -1.2,
+          correlation: 0.9 - offset,
+        },
+      ],
     },
     audio: {
       dry: `/audio/${caseId}/dry.wav`,
       reference: `/audio/${caseId}/reference.wav`,
       candidate: `/audio/${caseId}/candidate.wav`,
+      nam: `/audio/${caseId}/nam.flac`,
     },
     url: `/runs/run-1/cases/${caseId}`,
     previous_url: index === 1 ? null : "/runs/run-1/cases/case-a",
@@ -104,6 +131,7 @@ function markup() {
         <audio id="dry-audio" preload="none"></audio><a id="dry-download"></a>
         <audio id="reference-audio" preload="none"></audio><a id="reference-download"></a>
         <audio id="candidate-audio" preload="none"></audio><a id="candidate-download"></a><p id="candidate-missing" hidden></p>
+        <audio id="nam-audio" preload="none"></audio><a id="nam-download"></a><p id="nam-missing" hidden></p>
         <div role="tablist">
           <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" tabindex="0">ESR</button>
           <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" tabindex="-1">Level dB</button>
@@ -199,11 +227,15 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.match(document.querySelector("#case-metrics").textContent, /0\.8800/);
   assert.equal(document.querySelector("#dry-audio").getAttribute("preload"), "none");
   assert.equal(document.querySelector("#dry-audio").getAttribute("src"), "/audio/case-a/dry.wav");
+  assert.equal(document.querySelector("#nam-audio").getAttribute("src"), "/audio/case-a/nam.flac");
   assert.equal(document.querySelector("#case-chart").dataset.metric, "esr");
-  assert.ok(document.querySelectorAll("#case-chart .chart-series").length > 0);
+  assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Model vs BIAS-X/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Model vs NAM A2/);
 
   document.querySelector("#tab-correlation").click();
   assert.equal(document.querySelector("#case-chart").dataset.metric, "correlation");
+  assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
   assert.match(document.querySelector("#case-chart").textContent, /-1\.00/);
   assert.match(document.querySelector("#case-chart").textContent, /1\.00/);
 });
@@ -234,6 +266,7 @@ test("arrows and select update the canonical URL and replace all case media", as
   await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "1 / 2"));
   assert.equal(window.location.pathname, "/runs/run-1/cases/case-a");
   assert.equal(document.querySelector("#reference-audio").getAttribute("src"), "/audio/case-a/reference.wav");
+  assert.equal(document.querySelector("#nam-audio").getAttribute("src"), "/audio/case-a/nam.flac");
 });
 
 test("history and keyboard-operated metric tabs restore the selected state", async () => {
@@ -252,9 +285,10 @@ test("history and keyboard-operated metric tabs restore the selected state", asy
   assert.equal(document.activeElement.id, "tab-level");
   assert.equal(document.querySelector("#tab-level").getAttribute("aria-selected"), "true");
   assert.equal(document.querySelector("#case-chart").dataset.metric, "level_db");
-  assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference/);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /Candidate/);
+  assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 3);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /BIAS-X/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Model/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /NAM A2/);
 });
 
 test("a transient live-refresh failure keeps the populated inspector visible and retries", async () => {

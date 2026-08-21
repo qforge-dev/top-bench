@@ -58,6 +58,7 @@ async def _seed_run(settings: Settings, source: Path) -> tuple[str, list[RunCase
             ).all()
             run_cases: list[RunCase] = []
             for index, benchmark_case in enumerate(benchmark_cases):
+                benchmark_case.nam_reference_wet_key = benchmark_case.reference_wet_key
                 candidate_key = f"runs/{run.id}/candidates/{benchmark_case.id}.wav"
                 reference = await storage.get(benchmark_case.reference_wet_key)
                 await storage.put(candidate_key, reference)
@@ -73,6 +74,12 @@ async def _seed_run(settings: Settings, source: Path) -> tuple[str, list[RunCase
                     level_db=0.1 + index,
                     peak_db=0.2 + index,
                     correlation=0.99 - index / 100,
+                    nam_esr=0.04 + index / 100,
+                    nam_human_weighted_esr=0.05 + index / 100,
+                    nam_mrstft=0.06 + index / 100,
+                    nam_level_db=0.3 + index,
+                    nam_peak_db=0.4 + index,
+                    nam_correlation=0.97 - index / 100,
                     analysis={
                         "version": "top-arena-case-analysis-v1",
                         "window_seconds": 0.1,
@@ -88,6 +95,19 @@ async def _seed_run(settings: Settings, source: Path) -> tuple[str, list[RunCase
                                 "candidate_peak_db": -2.8,
                                 "peak_delta_db": 0.2,
                                 "correlation": 0.99 - index / 100,
+                            }
+                        ],
+                        "nam_points": [
+                            {
+                                "time_seconds": 0.0,
+                                "esr": 0.04 + index / 100,
+                                "reference_level_db": -18.2,
+                                "candidate_level_db": -17.9,
+                                "level_delta_db": 0.3,
+                                "reference_peak_db": -3.2,
+                                "candidate_peak_db": -2.8,
+                                "peak_delta_db": 0.4,
+                                "correlation": 0.97 - index / 100,
                             }
                         ],
                     },
@@ -163,7 +183,11 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert f'data-case-id="{last_id}"' in direct_page.text
         assert "case-detail-model" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
-        assert "/static/case_detail.js?v=20260821-esr-axis" in direct_page.text
+        assert "/static/case_detail.js?v=20260821-compact-nam" in direct_page.text
+        assert 'id="nam-audio"' in direct_page.text
+        assert 'class="breadcrumb"' not in direct_page.text
+        assert "Listen side by side" not in direct_page.text
+        assert "Windowed analysis" not in direct_page.text
 
         first_response = await client.get(f"/api/v1/runs/{run_id}/cases/{first_id}/detail")
         first_response.raise_for_status()
@@ -190,19 +214,21 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
             "level_db": 0.1,
             "peak_db": 0.2,
             "correlation": 0.99,
-            "nam_esr": None,
-            "nam_human_weighted_esr": None,
-            "nam_mrstft": None,
-            "nam_level_db": None,
-            "nam_peak_db": None,
-            "nam_correlation": None,
+            "nam_esr": 0.04,
+            "nam_human_weighted_esr": 0.05,
+            "nam_mrstft": 0.06,
+            "nam_level_db": 0.3,
+            "nam_peak_db": 0.4,
+            "nam_correlation": 0.97,
         }
         assert first["analysis"]["version"] == "top-arena-case-analysis-v1"
         assert first["analysis"]["points"][0]["time_seconds"] == 0.0
+        assert first["analysis"]["nam_points"][0]["esr"] == 0.04
         assert first["audio"] == {
             "dry": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/dry",
             "reference": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/reference",
             "candidate": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/candidate",
+            "nam": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/nam",
         }
 
         last_response = await client.get(f"/api/v1/runs/{run_id}/cases/{last_id}/detail")
@@ -212,7 +238,7 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert last["previous_url"] == case_index["cases"][-2]["url"]
         assert last["next_url"] is None
 
-        for kind in ("dry", "reference", "candidate"):
+        for kind in ("dry", "reference", "candidate", "nam"):
             audio = await client.get(f"/api/v1/runs/{run_id}/cases/{first_id}/audio/{kind}")
             audio.raise_for_status()
             assert audio.headers["content-type"] == "audio/wav"

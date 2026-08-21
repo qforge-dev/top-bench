@@ -8,23 +8,10 @@
 
 {% macro metric_summary(metric) -%}
   {% set values = metric|default({}, true) %}
-  <div class="metric-summary">
-    <strong class="metric-primary">{{ number(values.mean) }}</strong>
-    <dl class="metric-details">
-      <div><dt>P90</dt><dd>{{ number(values.p90) }}</dd></div>
-      <div><dt>Worst</dt><dd>{{ number(values.worst) }}</dd></div>
-      <div><dt>Best</dt><dd>{{ number(values.best) }}</dd></div>
-    </dl>
-  </div>
+  <strong class="metric-primary">{{ number(values.mean) }}</strong>
 {%- endmacro %}
 
 {% set initial_runs = runs|default([], true) %}
-{% set completed_state = namespace(count=0) %}
-{% for initial_run in initial_runs %}
-  {% if initial_run.status|default("") in ["completed", "finished"] %}
-    {% set completed_state.count = completed_state.count + 1 %}
-  {% endif %}
-{% endfor %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -37,8 +24,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css">
-    <script defer src="/static/dashboard.js?v=20260821-amp-filter"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
+    <script defer src="/static/dashboard.js?v=20260821-compact"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -57,45 +44,16 @@
     </header>
 
     <main>
-      <section class="hero" aria-labelledby="page-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Bias-X model benchmark</p>
-          <h1 id="page-title">Hear less hype.<br><em>Measure more.</em></h1>
-          <p class="hero-description">
-            One transparent arena for comparing amp models across identical audio,
-            positions, and scoring criteria. Lower error is better.
-          </p>
-        </div>
-        <dl class="hero-stats" aria-label="Leaderboard summary">
-          <div>
-            <dt>Models</dt>
-            <dd id="summary-run-count">{{ initial_runs|length }}</dd>
-          </div>
-          <div>
-            <dt>Completed</dt>
-            <dd id="summary-completed-count">{{ completed_state.count }}</dd>
-          </div>
-          <div>
-            <dt>Primary score</dt>
-            <dd>ESR</dd>
-          </div>
-        </dl>
-      </section>
-
       <section class="chart-panel panel" aria-labelledby="pareto-title">
         <div class="section-heading">
-          <div>
-            <p class="eyebrow">Efficiency frontier</p>
-            <h2 id="pareto-title">Accuracy vs. positions</h2>
-          </div>
+          <h1 id="pareto-title">ESR vs. positions</h1>
           <div class="chart-legend" aria-label="Chart legend">
-            <span><i class="legend-dot" aria-hidden="true"></i> Benchmark run</span>
-            <span><i class="legend-line" aria-hidden="true"></i> Pareto frontier</span>
+            <span><i class="legend-dot" aria-hidden="true"></i> Run</span>
+            <span><i class="legend-line" aria-hidden="true"></i> Pareto</span>
           </div>
         </div>
-        <p id="pareto-description" class="section-description">
-          Mean ESR against unique positions used. The frontier connects models for
-          which neither value can improve without the other getting worse.
+        <p id="pareto-description" class="sr-only">
+          Mean ESR against unique positions used; lower is better.
         </p>
         <div class="chart-shell">
           <svg
@@ -115,10 +73,7 @@
 
       <section id="leaderboard" class="leaderboard-section" aria-labelledby="leaderboard-title">
         <div class="section-heading leaderboard-heading">
-          <div>
-            <p class="eyebrow">All benchmark runs</p>
-            <h2 id="leaderboard-title">Leaderboard</h2>
-          </div>
+          <h2 id="leaderboard-title">Leaderboard</h2>
           <p class="refresh-status" id="refresh-status" aria-live="polite">
             Server-rendered snapshot
           </p>
@@ -206,22 +161,13 @@
                   <td class="model-cell" data-label="Model">
                     <strong><a class="model-link" href="/runs/{{ run.id }}">{{ run.name|default("Untitled model", true) }}</a></strong>
                     <span>by {{ run.creator|default("Anonymous", true) }}</span>
-                    {% if run.description|default("", true) %}<p>{{ run.description }}</p>{% endif %}
-                    <dl class="model-metadata">
-                      <div><dt>Params</dt><dd>{{ run.parameter_count|default("—", true) }}</dd></div>
-                      <div><dt>Audio</dt><dd>{{ run.audio_duration_sum|default("—", true) }}s</dd></div>
-                      <div><dt>Turns</dt><dd>{{ run.turns|default("—", true) }}</dd></div>
-                      <div><dt>Training</dt><dd>{{ run.training_time|default("—", true) }}s</dd></div>
-                    </dl>
                   </td>
                   <td data-label="Amp">
                     <strong>{{ run.amp_name|default(run.amp_id|default("Unknown amp", true), true) }}</strong>
-                    <span class="cell-secondary">{{ run.amp_type|default("—", true) }}</span>
                   </td>
                   <td data-label="Progress">
                     <span class="status status-{{ status|lower|replace('_', '-') }}">{{ status|replace('_', ' ')|title }}</span>
-                    <progress value="{{ completed }}" max="{{ total if total > 0 else 1 }}">{{ completed }} of {{ total }}</progress>
-                    <span class="cell-secondary">{{ completed }} / {{ total }}</span>
+                    <span class="progress-count">{{ completed }}/{{ total }}</span>
                   </td>
                   <td data-label="Positions" class="numeric-cell">{{ run.unique_positions_used|default("—", true) }}</td>
                   <td data-label="Realtime" class="numeric-cell">
@@ -244,11 +190,6 @@
         </div>
       </section>
     </main>
-
-    <footer>
-      <p>Top Arena <span aria-hidden="true">·</span> Reproducible audio model benchmarks</p>
-      <p>Scores update as benchmark audio is processed.</p>
-    </footer>
 
     <script id="leaderboard-initial-data" type="application/json">{{ leaderboard|tojson }}</script>
   </body>

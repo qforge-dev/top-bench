@@ -28,6 +28,9 @@
     error: document.querySelector("#detail-error"),
     errorMessage: document.querySelector("#detail-error-message"),
     loading: document.querySelector("#detail-loading"),
+    namAudio: document.querySelector("#nam-audio"),
+    namDownload: document.querySelector("#nam-download"),
+    namMissing: document.querySelector("#nam-missing"),
     next: document.querySelector("#next-case"),
     positions: document.querySelector("#position-chips"),
     previous: document.querySelector("#previous-case"),
@@ -294,11 +297,14 @@
     setAudio(elements.dryAudio, elements.dryDownload, audio.dry);
     setAudio(elements.referenceAudio, elements.referenceDownload, audio.reference);
     setAudio(elements.candidateAudio, elements.candidateDownload, audio.candidate, true);
+    setAudio(elements.namAudio, elements.namDownload, audio.nam, true);
     if (elements.candidateMissing) elements.candidateMissing.hidden = Boolean(audio.candidate);
+    if (elements.namMissing) elements.namMissing.hidden = Boolean(audio.nam);
   }
 
-  function analysisPoints(detail) {
+  function analysisPoints(detail, source = "bias") {
     const analysis = detail?.analysis;
+    if (source === "nam") return Array.isArray(analysis?.nam_points) ? analysis.nam_points : [];
     if (Array.isArray(analysis)) return analysis;
     return Array.isArray(analysis?.points) ? analysis.points : [];
   }
@@ -307,35 +313,43 @@
     correlation: {
       axis: "Correlation",
       description: "Correlation over time · higher is better",
-      fields: [{ key: "correlation", label: "Correlation" }],
+      fields: [
+        { key: "correlation", label: "Model vs BIAS-X", tone: "model" },
+        { key: "correlation", label: "Model vs NAM A2", source: "nam", tone: "nam" },
+      ],
       fixedDomain: [-1, 1],
     },
     esr: {
       axis: "ESR",
       description: "Error-to-signal ratio over time · lower is better",
-      fields: [{ key: "esr", label: "ESR" }],
+      fields: [
+        { key: "esr", label: "Model vs BIAS-X", tone: "model" },
+        { key: "esr", label: "Model vs NAM A2", source: "nam", tone: "nam" },
+      ],
       zeroBaseline: true,
     },
     level_db: {
       axis: "Level (dBFS)",
       description: "Reference and candidate RMS level over time",
       fields: [
-        { key: "reference_level_db", label: "Reference" },
-        { key: "candidate_level_db", label: "Candidate", secondary: true },
+        { key: "reference_level_db", label: "BIAS-X", tone: "reference" },
+        { key: "candidate_level_db", label: "Model", tone: "model" },
+        { key: "reference_level_db", label: "NAM A2", source: "nam", tone: "nam" },
       ],
     },
     peak_db: {
       axis: "Peak (dBFS)",
       description: "Reference and candidate peak level over time",
       fields: [
-        { key: "reference_peak_db", label: "Reference" },
-        { key: "candidate_peak_db", label: "Candidate", secondary: true },
+        { key: "reference_peak_db", label: "BIAS-X", tone: "reference" },
+        { key: "candidate_peak_db", label: "Model", tone: "model" },
+        { key: "reference_peak_db", label: "NAM A2", source: "nam", tone: "nam" },
       ],
     },
   };
 
-  function seriesFor(points, field) {
-    return points
+  function seriesFor(detail, field) {
+    return analysisPoints(detail, field.source)
       .map((point) => ({ time: finite(point?.time_seconds), value: finite(point?.[field.key]) }))
       .filter((point) => point.time !== null && point.value !== null);
   }
@@ -382,7 +396,10 @@
     elements.caseLegend.replaceChildren();
     for (const item of renderedSeries) {
       const label = createElement("span");
-      label.append(createElement("i"), document.createTextNode(item.definition.label));
+      label.append(
+        createElement("i", `tone-${item.definition.tone || "model"}`),
+        document.createTextNode(item.definition.label),
+      );
       elements.caseLegend.append(label);
     }
     if (renderedSeries.length === 0) {
@@ -401,9 +418,8 @@
     const detail = state.detail;
     if (!chart || !detail) return;
     const config = CHART_METRICS[state.metric] || CHART_METRICS.esr;
-    const points = analysisPoints(detail);
     const renderedSeries = config.fields
-      .map((definition) => ({ definition, values: seriesFor(points, definition) }))
+      .map((definition) => ({ definition, values: seriesFor(detail, definition) }))
       .filter((series) => series.values.length > 0);
     chart.replaceChildren();
     chart.dataset.metric = state.metric;
@@ -491,11 +507,12 @@
         const areaData = `${pathData} L ${coordinates[coordinates.length - 1].x} ${baseline} L ${coordinates[0].x} ${baseline} Z`;
         chart.append(createSvg("path", { class: "chart-area", d: areaData, "aria-hidden": "true" }));
       }
-      const className = `chart-series${series.definition.secondary || index > 0 ? " secondary" : ""}`;
+      const tone = series.definition.tone || (index > 0 ? "nam" : "model");
+      const className = `chart-series tone-${tone}`;
       chart.append(createSvg("path", { class: className, d: pathData, "aria-hidden": "true" }));
       const endpoint = coordinates[coordinates.length - 1];
       chart.append(createSvg("circle", {
-        class: `chart-endpoint${series.definition.secondary || index > 0 ? " secondary" : ""}`,
+        class: `chart-endpoint tone-${tone}`,
         cx: endpoint.x,
         cy: endpoint.y,
         r: 4,

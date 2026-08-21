@@ -7,8 +7,10 @@ from pathlib import Path
 import httpx
 import numpy as np
 import soundfile as sf
+from sqlalchemy import select
 from top_arena_server.app import create_app
 from top_arena_server.config import Settings
+from top_arena_server.models import BenchmarkCase
 from top_arena_server.seed import seed_sample_dataset
 
 
@@ -40,6 +42,12 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             chunk_seconds=0.1,
             positions=(((0.0, 0.0),),),
         )
+        async with app.state.services.database.session() as session:
+            benchmark_case = await session.scalar(
+                select(BenchmarkCase).where(BenchmarkCase.amp_id == "demo-bias-x")
+            )
+            assert benchmark_case is not None
+            benchmark_case.nam_reference_wet_key = benchmark_case.reference_wet_key
         await seed_sample_dataset(
             settings,
             source=source,
@@ -101,6 +109,12 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert snapshot["metrics"]["esr"]["mean"] is not None  # type: ignore[index]
             assert snapshot["metrics"]["mrstft"]["p90"] is not None  # type: ignore[index]
 
+            detail_response = await client.get(f"/api/v1/runs/{run_id}/cases/{case['id']}/detail")
+            detail_response.raise_for_status()
+            detail = detail_response.json()
+            assert detail["analysis"]["nam_points"]
+            assert detail["audio"]["nam"].endswith("/audio/nam")
+
             retry = await client.put(
                 f"/api/v1/runs/{run_id}/cases/{case['id']}/audio",
                 params={"realtime_x": 99.0},
@@ -121,7 +135,10 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260821-amp-filter" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260821-compact" in dashboard_response.text
+            assert 'class="hero"' not in dashboard_response.text
+            assert 'class="hero-stats"' not in dashboard_response.text
+            assert "Hear less hype" not in dashboard_response.text
 
             leaderboard_response = await client.get("/api/v1/leaderboard")
             leaderboard_response.raise_for_status()
