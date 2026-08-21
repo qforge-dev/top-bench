@@ -9,6 +9,23 @@ from top_arena_server.models import Amp, BenchmarkCase, BenchmarkRun
 from tools.nam_baselines.activate import AmpSpec, CaseSpec, DatasetActivator
 
 
+def test_storage_keys_are_relative_to_the_server_storage_prefix() -> None:
+    activator = DatasetActivator(
+        database=object(),  # type: ignore[arg-type]
+        s3=object(),  # type: ignore[arg-type]
+        bucket="bucket",
+        prefix="parametric-amplifier/public/top-arena/reference-corpus/v1",
+        storage_prefix="parametric-amplifier/public/top-arena",
+    )
+
+    assert (
+        activator._storage_key(  # noqa: SLF001
+            "parametric-amplifier/public/top-arena/reference-corpus/v1/dry/sound-01.flac"
+        )
+        == "reference-corpus/v1/dry/sound-01.flac"
+    )
+
+
 def _amp_spec(amp_id: str) -> AmpSpec:
     return AmpSpec(
         id=amp_id,

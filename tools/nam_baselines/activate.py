@@ -61,11 +61,18 @@ class DatasetActivator:
         s3: S3Like,
         bucket: str,
         prefix: str,
+        storage_prefix: str = "",
     ) -> None:
         self.database = database
         self.s3 = s3
         self.bucket = bucket
         self.prefix = prefix.rstrip("/")
+        self.storage_prefix = storage_prefix.strip("/")
+
+    def _storage_key(self, key: str) -> str:
+        normalized = key.lstrip("/")
+        prefix = f"{self.storage_prefix}/" if self.storage_prefix else ""
+        return normalized.removeprefix(prefix)
 
     def _json(self, key: str) -> dict[str, Any]:
         response = self.s3.get_object(Bucket=self.bucket, Key=key)
@@ -124,7 +131,7 @@ class DatasetActivator:
         cases: list[CaseSpec] = []
         for chunk_index, sound in enumerate(selected_sounds):
             sound_id = str(sound["sound_id"])
-            dry_key = f"{self.prefix}/{sound['file']}"
+            dry_key = self._storage_key(f"{self.prefix}/{sound['file']}")
             for position_index, position in enumerate(positions):
                 position_number = position_index + 1
                 position_id = f"position-{position_number:02d}"
@@ -152,8 +159,8 @@ class DatasetActivator:
                         ],
                         dry_key=dry_key,
                         dry_sha256=str(sound["sha256"]),
-                        reference_wet_key=bias_key,
-                        nam_reference_wet_key=nam_key,
+                        reference_wet_key=self._storage_key(bias_key),
+                        nam_reference_wet_key=self._storage_key(nam_key),
                         duration_seconds=float(sound["duration_seconds"]),
                         sample_rate=int(sound["sample_rate"]),
                     )
@@ -276,6 +283,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Activate complete TOP Arena NAM datasets")
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--prefix", required=True)
+    parser.add_argument("--storage-prefix", default="")
     parser.add_argument("--poll-seconds", type=float, default=60.0)
     arguments = parser.parse_args()
     database_url = os.environ.get("TOP_ARENA_DATABASE_URL")
@@ -291,6 +299,7 @@ def main() -> None:
         s3=cast("S3Like", boto3.client("s3")),
         bucket=arguments.bucket,
         prefix=arguments.prefix,
+        storage_prefix=arguments.storage_prefix,
     )
     try:
         asyncio.run(run_forever(activator, arguments.poll_seconds))

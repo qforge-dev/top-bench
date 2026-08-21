@@ -10,7 +10,7 @@ Group=ubuntu
 WorkingDirectory=/home/ubuntu/top-bench
 EnvironmentFile=/etc/top-arena/top-arena.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/ubuntu/top-bench/.venv/bin/python -m tools.nam_baselines.activate --bucket qlamp-training-artifacts-088543363904 --prefix parametric-amplifier/public/top-arena/reference-corpus/v1 --poll-seconds 60
+ExecStart=/home/ubuntu/top-bench/.venv/bin/python -m tools.nam_baselines.activate --bucket qlamp-training-artifacts-088543363904 --prefix parametric-amplifier/public/top-arena/reference-corpus/v1 --storage-prefix parametric-amplifier/public/top-arena --poll-seconds 60
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
