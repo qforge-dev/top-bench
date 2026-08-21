@@ -26,6 +26,7 @@
   }
 
   const state = {
+    amps: [],
     runs: [],
     sortKey: "esr",
     sortDirection: "ascending",
@@ -100,15 +101,35 @@
     return Array.isArray(values) ? values.map(normalizeRun) : [];
   }
 
+  function ampsFromPayload(payload, runs) {
+    const supplied = Array.isArray(payload?.amps) ? payload.amps : [];
+    const values = supplied.length
+      ? supplied.map((amp) => ({
+        id: text(amp?.id),
+        name: text(firstValue(amp?.name, amp?.id), "Unknown amp"),
+      }))
+      : runs.map((run) => ({ id: run.ampId, name: run.ampName }));
+    const unique = new Map();
+    for (const amp of values) {
+      if (amp.id) unique.set(amp.id, amp);
+    }
+    return [...unique.values()].sort((left, right) => (
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+      || left.id.localeCompare(right.id)
+    ));
+  }
+
   function parseInitialData() {
     if (!elements.initialData) {
-      return [];
+      return { amps: [], runs: [] };
     }
     try {
-      return runsFromPayload(JSON.parse(elements.initialData.textContent || "[]"));
+      const payload = JSON.parse(elements.initialData.textContent || "{}");
+      const runs = runsFromPayload(payload);
+      return { amps: ampsFromPayload(payload, runs), runs };
     } catch (error) {
       console.warn("Could not read the server-rendered leaderboard snapshot.", error);
-      return [];
+      return { amps: [], runs: [] };
     }
   }
 
@@ -249,7 +270,7 @@
 
   function sortValue(run, key, ranks) {
     const values = {
-      amp: `${run.ampType}\u0000${run.ampName}`,
+      amp: `${run.ampName}\u0000${run.ampId}`,
       esr: run.esr.mean,
       humanWeightedEsr: run.humanWeightedEsr.mean,
       mrstft: run.mrstft.mean,
@@ -275,12 +296,12 @@
   }
 
   function selectedRuns() {
-    const ampType = elements.ampFilter?.value || "";
+    const ampId = elements.ampFilter?.value || "";
     const creator = elements.creatorFilter?.value || "";
     const search = (elements.modelFilter?.value || "").trim().toLocaleLowerCase();
     return state.runs.filter((run) => {
       const searchable = `${run.name} ${run.description} ${run.creator}`.toLocaleLowerCase();
-      return (!ampType || run.ampType === ampType)
+      return (!ampId || run.ampId === ampId)
         && (!creator || run.creator === creator)
         && (!search || searchable.includes(search));
     });
@@ -307,7 +328,7 @@
       cell.append(
         createElement("strong", "", state.runs.length ? "No runs match these filters" : "No benchmark runs yet"),
         createElement("span", "", state.runs.length
-          ? "Try a different amp type, creator, or model name."
+          ? "Try a different amp, creator, or model name."
           : "Start a local benchmark and its progress will appear here."),
       );
       row.append(cell);
@@ -358,8 +379,27 @@
     select.value = values.includes(previous) ? previous : "";
   }
 
+  function updateAmpSelect() {
+    const select = elements.ampFilter;
+    if (!select) return;
+    const previous = select.value;
+    const expected = [{ id: "", name: "All amps" }, ...state.amps];
+    const current = [...select.options].map((option) => ({ id: option.value, name: option.textContent }));
+    if (expected.length === current.length
+      && expected.every((amp, index) => amp.id === current[index].id && amp.name === current[index].name)) {
+      return;
+    }
+    select.replaceChildren();
+    for (const amp of expected) {
+      const option = createElement("option", "", amp.name);
+      option.value = amp.id;
+      select.append(option);
+    }
+    select.value = state.amps.some((amp) => amp.id === previous) ? previous : "";
+  }
+
   function updateFilterOptions() {
-    updateSelect(elements.ampFilter, uniqueSorted(state.runs.map((run) => run.ampType)), "All amp types");
+    updateAmpSelect();
     updateSelect(elements.creatorFilter, uniqueSorted(state.runs.map((run) => run.creator)), "All creators");
   }
 
@@ -564,6 +604,7 @@
       }
       const payload = await response.json();
       state.runs = runsFromPayload(payload);
+      state.amps = ampsFromPayload(payload, state.runs);
       updateFilterOptions();
       render();
       setConnection(true);
@@ -610,7 +651,9 @@
     if (!document.hidden) void pollLeaderboard();
   });
 
-  state.runs = parseInitialData();
+  const initial = parseInitialData();
+  state.runs = initial.runs;
+  state.amps = initial.amps;
   updateFilterOptions();
   render();
   window.setInterval(() => void pollLeaderboard(), POLL_INTERVAL_MS);

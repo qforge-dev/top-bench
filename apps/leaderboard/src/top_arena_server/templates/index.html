@@ -136,9 +136,12 @@
             </span>
           </label>
           <label class="filter-field">
-            <span>Amp type</span>
+            <span>Amp</span>
             <select id="amp-filter">
-              <option value="">All amp types</option>
+              <option value="">All amps</option>
+              {% for amp in amps|default([], true) %}
+                <option value="{{ amp.id }}">{{ amp.name }}</option>
+              {% endfor %}
             </select>
           </label>
           <label class="filter-field">
@@ -247,6 +250,6 @@
       <p>Scores update as benchmark audio is processed.</p>
     </footer>
 
-    <script id="leaderboard-initial-data" type="application/json">{{ initial_runs|tojson }}</script>
+    <script id="leaderboard-initial-data" type="application/json">{{ leaderboard|tojson }}</script>
   </body>
 </html>

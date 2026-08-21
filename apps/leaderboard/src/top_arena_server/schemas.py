@@ -110,7 +110,7 @@ class RunResponse(ApiModel):
 
 class LeaderboardResponse(ApiModel):
     runs: list[RunResponse]
-    amp_types: list[str]
+    amps: list[AmpResponse]
     creators: list[str]
 
 

@@ -168,14 +168,14 @@ async def _load_case_locations(
 async def _leaderboard_runs(
     services: Services,
     *,
-    amp_type: str | None = None,
+    amp_id: str | None = None,
     creator: str | None = None,
     sort_key: str = "esr",
     direction: str = "asc",
 ) -> list[RunResponse]:
     statement = select(BenchmarkRun).join(BenchmarkRun.amp).options(joinedload(BenchmarkRun.amp))
-    if amp_type:
-        statement = statement.where(Amp.amp_type == amp_type)
+    if amp_id:
+        statement = statement.where(BenchmarkRun.amp_id == amp_id)
     if creator:
         statement = statement.where(BenchmarkRun.creator == creator)
     async with services.database.session() as session:
@@ -198,6 +198,12 @@ async def _leaderboard_runs(
     key = keys.get(sort_key, keys["esr"])
     responses.sort(key=key, reverse=direction == "desc")
     return responses
+
+
+async def _leaderboard_amps(services: Services) -> list[AmpResponse]:
+    async with services.database.session() as session:
+        amps = (await session.scalars(select(Amp).order_by(Amp.name, Amp.id))).all()
+    return [AmpResponse.model_validate(amp) for amp in amps]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -621,21 +627,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/leaderboard", response_model=LeaderboardResponse, tags=["leaderboard"])
     async def leaderboard(
-        amp_type: str | None = None,
+        amp_id: str | None = None,
         creator: str | None = None,
         sort: str = "esr",
         direction: str = "asc",
     ) -> LeaderboardResponse:
         runs = await _leaderboard_runs(
             services,
-            amp_type=amp_type,
+            amp_id=amp_id,
             creator=creator,
             sort_key=sort,
             direction=direction,
         )
         return LeaderboardResponse(
             runs=runs,
-            amp_types=sorted({run.amp_type for run in runs}),
+            amps=await _leaderboard_amps(services),
             creators=sorted({run.creator for run in runs}),
         )
 
@@ -679,12 +685,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def dashboard(request: Request) -> Response:
         runs = await _leaderboard_runs(services)
+        amps = await _leaderboard_amps(services)
+        serialized_runs = [run.model_dump(mode="json") for run in runs]
+        serialized_amps = [amp.model_dump(mode="json") for amp in amps]
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
-                "runs": [run.model_dump(mode="json") for run in runs],
-                "amp_types": sorted({run.amp_type for run in runs}),
+                "runs": serialized_runs,
+                "amps": serialized_amps,
+                "leaderboard": {"runs": serialized_runs, "amps": serialized_amps},
                 "creators": sorted({run.creator for run in runs}),
             },
         )

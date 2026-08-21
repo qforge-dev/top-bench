@@ -40,6 +40,16 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             chunk_seconds=0.1,
             positions=(((0.0, 0.0),),),
         )
+        await seed_sample_dataset(
+            settings,
+            source=source,
+            amp_id="pg-clean",
+            amp_name="PG Clean",
+            amp_type="guitar",
+            chunk_count=1,
+            chunk_seconds=0.1,
+            positions=(((0.0, 0.0),),),
+        )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             manifest_response = await client.get("/api/v1/amps/demo-bias-x/manifest")
@@ -114,4 +124,21 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
 
             leaderboard_response = await client.get("/api/v1/leaderboard")
             leaderboard_response.raise_for_status()
-            assert leaderboard_response.json()["runs"][0]["cases"] == []
+            leaderboard = leaderboard_response.json()
+            assert leaderboard["runs"][0]["cases"] == []
+            assert [(amp["id"], amp["name"]) for amp in leaderboard["amps"]] == [
+                ("demo-bias-x", "Demo Bias-X"),
+                ("pg-clean", "PG Clean"),
+            ]
+
+            selected_amp = await client.get("/api/v1/leaderboard", params={"amp_id": "demo-bias-x"})
+            selected_amp.raise_for_status()
+            assert [run["name"] for run in selected_amp.json()["runs"]] == ["lifecycle-model"]
+
+            unused_amp = await client.get("/api/v1/leaderboard", params={"amp_id": "pg-clean"})
+            unused_amp.raise_for_status()
+            assert unused_amp.json()["runs"] == []
+            assert [amp["id"] for amp in unused_amp.json()["amps"]] == [
+                "demo-bias-x",
+                "pg-clean",
+            ]
