@@ -121,6 +121,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
+            assert "/static/dashboard.js?v=20260821-amp-filter" in dashboard_response.text
 
             leaderboard_response = await client.get("/api/v1/leaderboard")
             leaderboard_response.raise_for_status()
