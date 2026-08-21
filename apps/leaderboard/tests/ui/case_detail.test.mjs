@@ -240,12 +240,16 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.match(document.querySelector("#case-chart").textContent, /1\.00/);
 });
 
-test("large ESR axis ticks use compact rounded labels that fit the chart", async () => {
+test("large ESR ranges use a readable logarithmic scale", async () => {
   const { window } = await setup({ esrValues: [0, 6_830_000] });
+  const chart = window.document.querySelector("#case-chart");
   const labels = [...window.document.querySelectorAll('#case-chart .chart-label[text-anchor="end"]')]
     .map((label) => label.textContent);
 
-  assert.deepEqual(labels, ["0.0000", "1.53M", "3.06M", "4.59M", "6.12M", "7.65M"]);
+  assert.equal(chart.dataset.scale, "log");
+  assert.equal(window.document.querySelector("#case-chart .chart-title").textContent, "ESR (log scale)");
+  assert.equal(labels[0], "0.0000");
+  assert.match(labels.at(-1), /M$/);
 });
 
 test("arrows and select update the canonical URL and replace all case media", async () => {

@@ -320,12 +320,13 @@
       fixedDomain: [-1, 1],
     },
     esr: {
-      axis: "ESR",
-      description: "Error-to-signal ratio over time · lower is better",
+      axis: "ESR (log scale)",
+      description: "Error-to-signal ratio over time · logarithmic scale · lower is better",
       fields: [
         { key: "esr", label: "Model vs BIAS-X", tone: "model" },
         { key: "esr", label: "Model vs NAM A2", source: "nam", tone: "nam" },
       ],
+      scale: "log",
       zeroBaseline: true,
     },
     level_db: {
@@ -423,6 +424,7 @@
       .filter((series) => series.values.length > 0);
     chart.replaceChildren();
     chart.dataset.metric = state.metric;
+    chart.dataset.scale = config.scale || "linear";
     renderLegend(config, renderedSeries);
 
     const width = 1_000;
@@ -450,7 +452,21 @@
     const maximumTime = Math.max(finite(detail.duration_seconds) ?? 0, ...allTimes, 1);
     const [minimumValue, maximumValue] = chartDomain(config, renderedSeries);
     const xScale = (value) => margin.left + ((value - minimumTime) / (maximumTime - minimumTime)) * innerWidth;
-    const yScale = (value) => margin.top + innerHeight - ((value - minimumValue) / (maximumValue - minimumValue)) * innerHeight;
+    const positiveValues = renderedSeries
+      .flatMap((item) => item.values.map((point) => point.value))
+      .filter((value) => value > 0);
+    const logarithmicFloor = config.scale === "log"
+      ? Math.min(0.000001, (Math.min(...positiveValues) || 0.00001) / 10)
+      : 0;
+    const scaledMinimum = config.scale === "log" ? Math.log10(logarithmicFloor) : minimumValue;
+    const scaledMaximum = config.scale === "log"
+      ? Math.max(scaledMinimum + 1, Math.log10(Math.max(maximumValue, logarithmicFloor * 10)))
+      : maximumValue;
+    const scaleValue = (value) => config.scale === "log"
+      ? Math.log10(Math.max(value, logarithmicFloor))
+      : value;
+    const yScale = (value) => margin.top + innerHeight
+      - ((scaleValue(value) - scaledMinimum) / (scaledMaximum - scaledMinimum)) * innerHeight;
 
     const defs = createSvg("defs");
     const gradient = createSvg("linearGradient", { id: "case-area-fill", x1: 0, x2: 0, y1: 0, y2: 1 });
@@ -475,7 +491,10 @@
       const xLabel = createSvg("text", { class: "chart-label", x, y: margin.top + innerHeight + 27, "text-anchor": "middle" });
       xLabel.textContent = `${formatNumber(minimumTime + ratio * (maximumTime - minimumTime), 1)}s`;
       const yLabel = createSvg("text", { class: "chart-label", x: margin.left - 13, y: margin.top + innerHeight - ratio * innerHeight + 4, "text-anchor": "end" });
-      yLabel.textContent = chartTick(minimumValue + ratio * (maximumValue - minimumValue), state.metric);
+      const tickValue = config.scale === "log"
+        ? (ratio === 0 ? 0 : 10 ** (scaledMinimum + ratio * (scaledMaximum - scaledMinimum)))
+        : minimumValue + ratio * (maximumValue - minimumValue);
+      yLabel.textContent = chartTick(tickValue, state.metric);
       grid.append(xLabel, yLabel);
     }
     grid.append(
