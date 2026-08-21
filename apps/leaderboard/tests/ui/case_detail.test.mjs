@@ -130,7 +130,12 @@ async function waitFor(assertion, timeoutMs = 1_000) {
   assertion();
 }
 
-async function setup({ captureTimers = false, failAfterDetailRequests = Infinity, runStatus = "completed" } = {}) {
+async function setup({
+  captureTimers = false,
+  esrValues = null,
+  failAfterDetailRequests = Infinity,
+  runStatus = "completed",
+} = {}) {
   const dom = new JSDOM(markup(), {
     runScripts: "outside-only",
     url: "https://arena.test/runs/run-1/cases/case-a",
@@ -160,6 +165,11 @@ async function setup({ captureTimers = false, failAfterDetailRequests = Infinity
     const payload = url.endsWith("/case-index")
       ? { run: detail("case-a", 1).run, cases: CASES }
       : detail(url.endsWith("case-b/detail") ? "case-b" : "case-a", url.endsWith("case-b/detail") ? 2 : 1);
+    if (!url.endsWith("/case-index") && esrValues) {
+      payload.analysis.points.forEach((point, index) => {
+        point.esr = esrValues[index];
+      });
+    }
     payload.run.status = runStatus;
     if (!url.endsWith("/case-index")) payload.status = runStatus;
     return { ok: true, status: 200, json: async () => payload };
@@ -196,6 +206,14 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.equal(document.querySelector("#case-chart").dataset.metric, "correlation");
   assert.match(document.querySelector("#case-chart").textContent, /-1\.00/);
   assert.match(document.querySelector("#case-chart").textContent, /1\.00/);
+});
+
+test("large ESR axis ticks use compact rounded labels that fit the chart", async () => {
+  const { window } = await setup({ esrValues: [0, 6_830_000] });
+  const labels = [...window.document.querySelectorAll('#case-chart .chart-label[text-anchor="end"]')]
+    .map((label) => label.textContent);
+
+  assert.deepEqual(labels, ["0.0000", "1.53M", "3.06M", "4.59M", "6.12M", "7.65M"]);
 });
 
 test("arrows and select update the canonical URL and replace all case media", async () => {

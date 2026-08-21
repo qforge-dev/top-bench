@@ -357,7 +357,23 @@
 
   function chartTick(value, metric) {
     if (metric === "correlation") return Number(value).toFixed(2);
-    if (metric === "esr") return Number(value).toFixed(value < 0.01 ? 4 : 3);
+    if (metric === "esr") {
+      const absolute = Math.abs(value);
+      const compactScales = [
+        { divisor: 1_000_000_000_000, suffix: "T" },
+        { divisor: 1_000_000_000, suffix: "B" },
+        { divisor: 1_000_000, suffix: "M" },
+        { divisor: 1_000, suffix: "K" },
+      ];
+      const scale = compactScales.find((candidate) => absolute >= candidate.divisor);
+      if (scale) {
+        const rounded = (value / scale.divisor).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+        return `${rounded}${scale.suffix}`;
+      }
+      if (absolute >= 100) return Number(value).toFixed(0);
+      if (absolute >= 10) return Number(value).toFixed(1);
+      return Number(value).toFixed(absolute < 0.01 ? 4 : 3);
+    }
     return Number(value).toFixed(1);
   }
 
