@@ -9,8 +9,8 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-delete-run">
-    <script defer src="/static/case_detail.js?v=20260822-delete-run"></script>
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-six-part-audition">
+    <script defer src="/static/case_detail.js?v=20260822-six-part-audition"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -132,13 +132,15 @@
               </div>
               <div class="sequence-copy">
                 <span id="sequence-status" role="status" aria-live="polite">Ready</span>
-                <span>Four equal sections on the same timeline</span>
+                <span>Six contiguous sections · source switches without restarting the sound</span>
               </div>
-              <div class="audition-sequence" aria-label="Alternating audition sequence">
-                <button class="sequence-part" data-sequence-index="0" type="button"><span>01</span> BIAS-X</button>
-                <button class="sequence-part" data-sequence-index="1" type="button"><span>02</span> Model</button>
-                <button class="sequence-part" data-sequence-index="2" type="button"><span>03</span> BIAS-X</button>
-                <button class="sequence-part" data-sequence-index="3" type="button"><span>04</span> Model</button>
+              <div class="audition-sequence" aria-label="Continuous source-switching audition sequence">
+                <button class="sequence-part" data-sequence-index="0" data-sequence-source="reference" type="button"><span>01</span> BIAS-X</button>
+                <button class="sequence-part" data-sequence-index="1" data-sequence-source="model" type="button"><span>02</span> Model</button>
+                <button class="sequence-part" data-sequence-index="2" data-sequence-source="nam" type="button"><span>03</span> NAM A2</button>
+                <button class="sequence-part" data-sequence-index="3" data-sequence-source="reference" type="button"><span>04</span> BIAS-X</button>
+                <button class="sequence-part" data-sequence-index="4" data-sequence-source="model" type="button"><span>05</span> Model</button>
+                <button class="sequence-part" data-sequence-index="5" data-sequence-source="nam" type="button"><span>06</span> NAM A2</button>
               </div>
 
               <div class="audio-grid">

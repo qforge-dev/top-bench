@@ -4,6 +4,14 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const REFRESH_INTERVAL_MS = 2_000;
   const TERMINAL_STATUSES = new Set(["completed", "finished", "failed", "error"]);
+  const SEQUENCE_SOURCES = [
+    { element: "referenceAudio", label: "BIAS-X" },
+    { element: "candidateAudio", label: "Model" },
+    { element: "namAudio", label: "NAM A2" },
+    { element: "referenceAudio", label: "BIAS-X" },
+    { element: "candidateAudio", label: "Model" },
+    { element: "namAudio", label: "NAM A2" },
+  ];
 
   const root = document.querySelector("#run-detail");
   if (!root) return;
@@ -69,6 +77,7 @@
     requestSerial: 0,
     runId: root.dataset.runId || "",
     sequenceActive: false,
+    sequenceGeneration: 0,
     sequenceIndex: -1,
     sequenceTimer: null,
     waveformCache: new Map(),
@@ -381,9 +390,10 @@
 
   function stopSequence(status = "Ready") {
     clearSequenceTimer();
+    state.sequenceGeneration += 1;
     state.sequenceActive = false;
     state.sequenceIndex = -1;
-    for (const audio of [elements.referenceAudio, elements.candidateAudio]) {
+    for (const audio of [elements.referenceAudio, elements.candidateAudio, elements.namAudio]) {
       if (audio && !audio.paused && typeof audio.pause === "function") audio.pause();
     }
     for (const part of elements.sequenceParts) {
@@ -400,15 +410,15 @@
       return;
     }
     clearSequenceTimer();
-    const referenceStep = index % 2 === 0;
-    const audio = referenceStep ? elements.referenceAudio : elements.candidateAudio;
-    const label = referenceStep ? "BIAS-X" : "Model";
+    const source = SEQUENCE_SOURCES[index];
+    const audio = elements[source.element];
+    const label = source.label;
     const duration = Math.max((finite(state.detail?.duration_seconds) ?? 4) / elements.sequenceParts.length, 0.1);
     if (!audio?.getAttribute("src")) {
       stopSequence(`${label} audio is unavailable`);
       return;
     }
-    for (const candidate of [elements.referenceAudio, elements.candidateAudio]) {
+    for (const candidate of [elements.referenceAudio, elements.candidateAudio, elements.namAudio]) {
       if (candidate && candidate !== audio && !candidate.paused && typeof candidate.pause === "function") candidate.pause();
     }
     state.sequenceIndex = index;
@@ -419,35 +429,63 @@
       else part.removeAttribute("aria-current");
     });
     setText(elements.sequenceStatus, `${index + 1} / ${elements.sequenceParts.length} · ${label}`);
-    const beginPlayback = () => {
-      if (!state.sequenceActive || state.sequenceIndex !== index) return;
-      try {
-        audio.currentTime = duration * index;
-      } catch {
-        stopSequence("Audio could not seek to this section");
-        return;
-      }
-      const playback = audio.play();
-      if (playback && typeof playback.catch === "function") {
-        playback.catch(() => stopSequence("Playback could not start"));
-      }
-      state.sequenceTimer = window.setTimeout(() => {
-        if (!state.sequenceActive) return;
-        playSequenceStep(index + 1);
-      }, duration * 1_000);
-    };
-    if (audio.readyState >= 4) beginPlayback();
-    else {
-      audio.addEventListener("canplaythrough", beginPlayback, { once: true });
-      audio.load();
+    try {
+      audio.currentTime = duration * index;
+    } catch {
+      stopSequence("Audio could not seek to this section");
+      return;
     }
+    const playback = audio.play();
+    if (playback && typeof playback.catch === "function") {
+      playback.catch(() => stopSequence("Playback could not start"));
+    }
+    state.sequenceTimer = window.setTimeout(() => {
+      if (!state.sequenceActive) return;
+      playSequenceStep(index + 1);
+    }, duration * 1_000);
+  }
+
+  function waitUntilPlayable(audio) {
+    if (audio.readyState >= 3) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        audio.removeEventListener("canplaythrough", ready);
+        audio.removeEventListener("error", failed);
+      };
+      const ready = () => {
+        cleanup();
+        resolve();
+      };
+      const failed = () => {
+        cleanup();
+        reject(new Error("Audio could not be buffered"));
+      };
+      audio.addEventListener("canplaythrough", ready);
+      audio.addEventListener("error", failed);
+      audio.load();
+    });
   }
 
   function startSequence(index = 0) {
     stopSequence();
     state.sequenceActive = true;
+    const generation = state.sequenceGeneration;
     setSequenceButton(true);
-    playSequenceStep(index);
+    setText(elements.sequenceStatus, "Buffering BIAS-X, Model, and NAM A2…");
+    const sources = [elements.referenceAudio, elements.candidateAudio, elements.namAudio];
+    const missing = sources.find((audio) => !audio?.getAttribute("src"));
+    if (missing) {
+      stopSequence("All three comparison sources are required");
+      return;
+    }
+    void Promise.all(sources.map((audio) => waitUntilPlayable(audio))).then(
+      () => {
+        if (state.sequenceActive && state.sequenceGeneration === generation) playSequenceStep(index);
+      },
+      () => {
+        if (state.sequenceGeneration === generation) stopSequence("Audio could not be buffered");
+      },
+    );
   }
 
   function analysisPoints(detail, source = "bias") {

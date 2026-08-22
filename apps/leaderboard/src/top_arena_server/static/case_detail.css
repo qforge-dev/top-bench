@@ -1298,7 +1298,7 @@
   display: grid;
   border: 1px solid var(--line);
   margin-bottom: 11px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .sequence-part {
@@ -1325,8 +1325,12 @@
   color: #4f5b65;
 }
 
-.sequence-part:nth-child(even) {
+.sequence-part[data-sequence-source="model"] {
   color: #8dc9ff;
+}
+
+.sequence-part[data-sequence-source="nam"] {
+  color: var(--amber);
 }
 
 .sequence-part.is-active {
@@ -1590,14 +1594,14 @@
   }
 
   .audition-sequence {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .sequence-part:nth-child(2) {
+  .sequence-part:nth-child(3) {
     border-right: 0;
   }
 
-  .sequence-part:nth-child(-n + 2) {
+  .sequence-part:nth-child(-n + 3) {
     border-bottom: 1px solid var(--line);
   }
 

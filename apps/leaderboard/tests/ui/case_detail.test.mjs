@@ -144,8 +144,10 @@ function markup() {
         <div class="audition-sequence">
           <button class="sequence-part" data-sequence-index="0" type="button">01 BIAS-X</button>
           <button class="sequence-part" data-sequence-index="1" type="button">02 Model</button>
-          <button class="sequence-part" data-sequence-index="2" type="button">03 BIAS-X</button>
-          <button class="sequence-part" data-sequence-index="3" type="button">04 Model</button>
+          <button class="sequence-part" data-sequence-index="2" type="button">03 NAM A2</button>
+          <button class="sequence-part" data-sequence-index="3" type="button">04 BIAS-X</button>
+          <button class="sequence-part" data-sequence-index="4" type="button">05 Model</button>
+          <button class="sequence-part" data-sequence-index="5" type="button">06 NAM A2</button>
         </div>
         <p id="waveform-status"></p><div id="waveform-legend"></div>
         <svg id="waveform-chart" viewBox="0 0 1000 360"></svg>
@@ -305,24 +307,33 @@ test("large ESR ranges use a readable logarithmic scale", async () => {
   assert.match(labels.at(-1), /M$/);
 });
 
-test("play sequence alternates synchronized BIAS-X and model sections", async () => {
+test("play sequence switches sources across one continuous six-part timeline", async () => {
   const { mediaLoads, mediaPlays, timers, window } = await setup({ captureTimers: true });
   const document = window.document;
 
   document.querySelector("#play-sequence").click();
   await waitFor(() => assert.equal(mediaPlays.length, 1));
-  assert.deepEqual(mediaLoads, ["reference-audio"]);
+  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
   assert.deepEqual(mediaPlays[0], { id: "reference-audio", currentTime: 0 });
   assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
-  assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 4.*BIAS-X/);
+  assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 6.*BIAS-X/);
   assert.equal(document.querySelector("#play-sequence").textContent, "Stop sequence");
 
-  assert.equal(timers[0].delay, 1_250);
+  assert.ok(Math.abs(timers[0].delay - (5_000 / 6)) < 0.001);
   timers[0].callback();
   await waitFor(() => assert.equal(mediaPlays.length, 2));
-  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio"]);
-  assert.deepEqual(mediaPlays[1], { id: "candidate-audio", currentTime: 1.25 });
+  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
+  assert.ok(Math.abs(mediaPlays[1].currentTime - (5 / 6)) < 0.000001);
+  assert.equal(mediaPlays[1].id, "candidate-audio");
   assert.equal(document.querySelector('[data-sequence-index="1"]').getAttribute("aria-current"), "true");
+
+  timers[1].callback();
+  await waitFor(() => assert.equal(mediaPlays.length, 3));
+  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
+  assert.ok(Math.abs(mediaPlays[2].currentTime - (10 / 6)) < 0.000001);
+  assert.equal(mediaPlays[2].id, "nam-audio");
+  assert.equal(document.querySelector('[data-sequence-index="2"]').getAttribute("aria-current"), "true");
+  assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM A2/);
 
   document.querySelector("#next-case").click();
   await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
