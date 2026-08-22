@@ -246,7 +246,18 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
             audio = await client.get(f"/api/v1/runs/{run_id}/cases/{first_id}/audio/{kind}")
             audio.raise_for_status()
             assert audio.headers["content-type"] == "audio/wav"
+            assert audio.headers["accept-ranges"] == "bytes"
             assert audio.content.startswith(b"RIFF")
+
+        partial_audio = await client.get(
+            f"/api/v1/runs/{run_id}/cases/{first_id}/audio/candidate",
+            headers={"Range": "bytes=0-3"},
+        )
+        assert partial_audio.status_code == 206
+        assert partial_audio.content == b"RIFF"
+        assert partial_audio.headers["accept-ranges"] == "bytes"
+        assert partial_audio.headers["content-range"].startswith("bytes 0-3/")
+        assert partial_audio.headers["content-length"] == "4"
 
         missing_page = await client.get(f"/runs/{run_id}/cases/not-a-case")
         assert missing_page.status_code == 404

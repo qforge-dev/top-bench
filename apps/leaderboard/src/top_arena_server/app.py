@@ -88,6 +88,52 @@ def _audio_media_type(object_key: str) -> str:
     return "audio/flac" if Path(object_key).suffix.lower() == ".flac" else "audio/wav"
 
 
+def _parse_byte_range(range_header: str, total: int) -> tuple[int, int]:
+    if not range_header.startswith("bytes=") or "," in range_header or total == 0:
+        raise ValueError
+    bounds = range_header.removeprefix("bytes=").strip().split("-", maxsplit=1)
+    if len(bounds) != 2:
+        raise ValueError
+    start_text, end_text = bounds
+    if start_text:
+        start = int(start_text)
+        end = int(end_text) if end_text else total - 1
+    else:
+        suffix_length = int(end_text)
+        if suffix_length <= 0:
+            raise ValueError
+        start = max(total - suffix_length, 0)
+        end = total - 1
+    if start < 0 or start >= total or end < start:
+        raise ValueError
+    return start, min(end, total - 1)
+
+
+def _audio_response(value: bytes, media_type: str, range_header: str | None) -> Response:
+    total = len(value)
+    headers = {"Accept-Ranges": "bytes"}
+    if range_header is None:
+        return Response(content=value, media_type=media_type, headers=headers)
+    try:
+        start, end = _parse_byte_range(range_header, total)
+    except ValueError:
+        return Response(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={**headers, "Content-Range": f"bytes */{total}"},
+        )
+    content = value[start : end + 1]
+    return Response(
+        content=content,
+        media_type=media_type,
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
+        headers={
+            **headers,
+            "Content-Range": f"bytes {start}-{end}/{total}",
+            "Content-Length": str(len(content)),
+        },
+    )
+
+
 def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunResponse:
     return RunResponse(
         id=run.id,
@@ -574,6 +620,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_class=Response,
     )
     async def case_audio(
+        request: Request,
         run_id: str,
         case_id: str,
         kind: Literal["dry", "reference", "candidate", "nam"],
@@ -597,7 +644,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if object_key is None or not await storage.exists(object_key):
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"{kind} audio not found")
         value = await storage.get(object_key)
-        return Response(content=value, media_type=_audio_media_type(object_key))
+        return _audio_response(value, _audio_media_type(object_key), request.headers.get("range"))
 
     @app.get(
         "/api/v1/runs/{run_id}/events",
