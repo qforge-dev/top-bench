@@ -195,7 +195,7 @@ async function setup({
   };
   window.HTMLMediaElement.prototype.load = function load() {
     mediaLoads.push(this.id);
-    this.dispatchEvent(new window.Event("loadedmetadata"));
+    this.dispatchEvent(new window.Event("canplaythrough"));
   };
   if (captureTimers) {
     window.setTimeout = (callback, delay) => {

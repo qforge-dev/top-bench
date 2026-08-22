@@ -380,9 +380,9 @@
         playSequenceStep(index + 1);
       }, duration * 1_000);
     };
-    if (audio.readyState >= 1) beginPlayback();
+    if (audio.readyState >= 4) beginPlayback();
     else {
-      audio.addEventListener("loadedmetadata", beginPlayback, { once: true });
+      audio.addEventListener("canplaythrough", beginPlayback, { once: true });
       audio.load();
     }
   }
