@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -151,6 +151,17 @@ class RunCaseAudioResponse(ApiModel):
     nam: str | None
 
 
+class WaveformSeriesResponse(ApiModel):
+    key: Literal["dry", "nam", "model"]
+    label: str
+    values: list[float]
+
+
+class WaveformResponse(ApiModel):
+    duration_seconds: float
+    series: list[WaveformSeriesResponse]
+
+
 class RunCaseAnalysisPoint(ApiModel):
     time_seconds: float
     esr: float
@@ -186,6 +197,7 @@ class RunCaseDetailResponse(ApiModel):
     metrics: RunCaseMetricsResponse
     analysis: RunCaseAnalysisResponse
     audio: RunCaseAudioResponse
+    waveform_url: str
     url: str
     previous_url: str | None
     next_url: str | None

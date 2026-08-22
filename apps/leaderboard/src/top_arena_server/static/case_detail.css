@@ -559,6 +559,119 @@
   place-items: center;
 }
 
+.waveform-panel {
+  padding: 0;
+  margin-top: 12px;
+  border-radius: 0;
+}
+
+.waveform-heading {
+  display: flex;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.waveform-heading .lab-block-label {
+  margin-bottom: 4px;
+}
+
+.waveform-heading h3 {
+  margin: 0;
+  font-size: 0.88rem;
+  letter-spacing: -0.02em;
+}
+
+.waveform-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.waveform-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.waveform-legend i {
+  width: 16px;
+  height: 2px;
+  background: #68737d;
+}
+
+.waveform-legend i.tone-nam {
+  background: var(--amber);
+}
+
+.waveform-legend i.tone-model {
+  background: var(--blue);
+}
+
+.waveform-status {
+  min-height: 25px;
+  padding: 7px 12px 0;
+  margin: 0;
+  color: #63707b;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.52rem;
+}
+
+.waveform-shell {
+  min-height: 320px;
+  overflow-x: auto;
+}
+
+.waveform-chart {
+  display: block;
+  width: 100%;
+  min-width: 680px;
+  min-height: 320px;
+}
+
+.waveform-grid {
+  stroke: #202832;
+  stroke-width: 1;
+}
+
+.waveform-center {
+  stroke: #4a5661;
+  stroke-width: 1;
+}
+
+.waveform-label,
+.waveform-empty {
+  fill: #74808a;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+}
+
+.waveform-series {
+  fill: rgb(104 115 125 / 8%);
+  stroke: #68737d;
+  stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.waveform-series.tone-nam {
+  fill: rgb(255 189 92 / 7%);
+  stroke: var(--amber);
+  stroke-width: 1.35;
+}
+
+.waveform-series.tone-model {
+  fill: rgb(99 179 255 / 7%);
+  stroke: var(--blue);
+  stroke-width: 1.4;
+}
+
 .analysis-panel {
   padding: 18px;
   margin-top: 30px;

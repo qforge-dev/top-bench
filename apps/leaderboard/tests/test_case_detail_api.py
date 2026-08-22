@@ -183,12 +183,19 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert f'data-case-id="{last_id}"' in direct_page.text
         assert "case-detail-model" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
-        assert "/static/case_detail.js?v=20260822-audio-lab-v3" in direct_page.text
+        assert "/static/case_detail.js?v=20260822-reference-waveform" in direct_page.text
         assert 'class="lab-layout"' in direct_page.text
         assert 'class="lab-sidebar"' in direct_page.text
         assert 'id="play-sequence"' in direct_page.text
         assert 'class="audition-sequence"' in direct_page.text
+        assert 'id="waveform-chart"' in direct_page.text
         assert 'id="nam-audio"' in direct_page.text
+        assert direct_page.text.index('id="waveform-chart"') < direct_page.text.index(
+            'id="play-sequence"'
+        )
+        assert direct_page.text.index('id="play-sequence"') < direct_page.text.index(
+            'id="case-chart"'
+        )
         assert 'class="breadcrumb"' not in direct_page.text
         assert "Listen side by side" not in direct_page.text
         assert "Windowed analysis" not in direct_page.text
@@ -234,6 +241,17 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
             "candidate": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/candidate",
             "nam": f"/api/v1/runs/{run_id}/cases/{first_id}/audio/nam",
         }
+        assert first["waveform_url"] == f"/api/v1/runs/{run_id}/cases/{first_id}/waveform"
+
+        waveform_response = await client.get(first["waveform_url"])
+        waveform_response.raise_for_status()
+        waveform = waveform_response.json()
+        assert waveform["duration_seconds"] == 0.1
+        assert [series["key"] for series in waveform["series"]] == ["dry", "nam", "model"]
+        assert all(len(series["values"]) == 720 for series in waveform["series"])
+        assert all(
+            0.0 <= value <= 1.0 for series in waveform["series"] for value in series["values"]
+        )
 
         last_response = await client.get(f"/api/v1/runs/{run_id}/cases/{last_id}/detail")
         last_response.raise_for_status()

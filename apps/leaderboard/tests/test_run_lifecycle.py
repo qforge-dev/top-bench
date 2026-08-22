@@ -113,6 +113,8 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             detail_response.raise_for_status()
             detail = detail_response.json()
             assert detail["analysis"]["nam_points"]
+            assert detail["metrics"]["nam_esr"] == 0.0
+            assert detail["analysis"]["nam_points"][0]["esr"] == 0.0
             assert detail["audio"]["nam"].endswith("/audio/nam")
 
             retry = await client.put(

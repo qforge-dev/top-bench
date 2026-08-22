@@ -110,6 +110,7 @@ function detail(caseId, index) {
       candidate: `/audio/${caseId}/candidate.wav`,
       nam: `/audio/${caseId}/nam.flac`,
     },
+    waveform_url: `/waveform/${caseId}`,
     url: `/runs/run-1/cases/${caseId}`,
     previous_url: index === 1 ? null : "/runs/run-1/cases/case-a",
     next_url: index === 2 ? null : "/runs/run-1/cases/case-b",
@@ -140,6 +141,8 @@ function markup() {
           <button class="sequence-part" data-sequence-index="2" type="button">03 BIAS-X</button>
           <button class="sequence-part" data-sequence-index="3" type="button">04 Model</button>
         </div>
+        <p id="waveform-status"></p><div id="waveform-legend"></div>
+        <svg id="waveform-chart" viewBox="0 0 1000 360"></svg>
         <div role="tablist">
           <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" tabindex="0">ESR</button>
           <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" tabindex="-1">Level dB</button>
@@ -216,16 +219,26 @@ async function setup({
         return { ok: false, status: 503 };
       }
     }
+    const detailCase = url.includes("case-b") ? "case-b" : "case-a";
     const payload = url.endsWith("/case-index")
       ? { run: detail("case-a", 1).run, cases: CASES }
-      : detail(url.endsWith("case-b/detail") ? "case-b" : "case-a", url.endsWith("case-b/detail") ? 2 : 1);
-    if (!url.endsWith("/case-index") && esrValues) {
+      : url.startsWith("/waveform/")
+        ? {
+            duration_seconds: 5,
+            series: [
+              { key: "dry", label: "Dry", values: [0, 0.2, 0.5, 0.1, 0] },
+              { key: "nam", label: "NAM A2", values: [0, 0.3, 0.45, 0.12, 0] },
+              { key: "model", label: "Model", values: [0, 0.25, 0.48, 0.11, 0] },
+            ],
+          }
+        : detail(detailCase, detailCase === "case-b" ? 2 : 1);
+    if (url.endsWith("/detail") && esrValues) {
       payload.analysis.points.forEach((point, index) => {
         point.esr = esrValues[index];
       });
     }
-    payload.run.status = runStatus;
-    if (!url.endsWith("/case-index")) payload.status = runStatus;
+    if (payload.run) payload.run.status = runStatus;
+    if (url.endsWith("/detail")) payload.status = runStatus;
     return { ok: true, status: 200, json: async () => payload };
   };
   const script = await readFile(SCRIPT_URL, "utf8");
@@ -241,6 +254,7 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.deepEqual(requests, [
     "/api/v1/runs/run-1/case-index",
     "/api/v1/runs/run-1/cases/case-a/detail",
+    "/waveform/case-a",
   ]);
   assert.equal(document.querySelector("#run-name").textContent, "Velvet Drive");
   assert.equal(document.title, "Velvet Drive · Case detail · Top Arena");
@@ -256,8 +270,12 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.equal(document.querySelector("#nam-audio").getAttribute("src"), "/audio/case-a/nam.flac");
   assert.equal(document.querySelector("#case-chart").dataset.metric, "esr");
   assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /Model vs BIAS-X/);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /Model vs NAM A2/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference vs Model/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference vs NAM A2/);
+  await waitFor(() => assert.equal(document.querySelectorAll("#waveform-chart .waveform-series").length, 3));
+  assert.match(document.querySelector("#waveform-legend").textContent, /Dry/);
+  assert.match(document.querySelector("#waveform-legend").textContent, /NAM A2/);
+  assert.match(document.querySelector("#waveform-legend").textContent, /Model/);
 
   document.querySelector("#tab-correlation").click();
   assert.equal(document.querySelector("#case-chart").dataset.metric, "correlation");
@@ -314,6 +332,7 @@ test("arrows and select update the canonical URL and replace all case media", as
   assert.equal(document.querySelector("#candidate-audio").getAttribute("src"), "/audio/case-b/candidate.wav");
   assert.equal(document.querySelector("#next-case").disabled, true);
   assert.equal(requests.filter((url) => url.endsWith("/detail")).length, 2);
+  await waitFor(() => assert.ok(requests.includes("/waveform/case-b")));
 
   const select = document.querySelector("#case-select");
   select.value = "case-a";

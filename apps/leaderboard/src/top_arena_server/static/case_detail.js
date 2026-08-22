@@ -48,6 +48,9 @@
     sequenceParts: [...document.querySelectorAll(".sequence-part[data-sequence-index]")],
     sequenceStatus: document.querySelector("#sequence-status"),
     tabs: [...document.querySelectorAll('[role="tab"][data-metric]')],
+    waveformChart: document.querySelector("#waveform-chart"),
+    waveformLegend: document.querySelector("#waveform-legend"),
+    waveformStatus: document.querySelector("#waveform-status"),
   };
 
   const state = {
@@ -61,6 +64,7 @@
     sequenceActive: false,
     sequenceIndex: -1,
     sequenceTimer: null,
+    waveformCache: new Map(),
   };
 
   function finite(value) {
@@ -406,8 +410,8 @@
       axis: "Correlation",
       description: "Correlation over time · higher is better",
       fields: [
-        { key: "correlation", label: "Model vs BIAS-X", tone: "model" },
-        { key: "correlation", label: "Model vs NAM A2", source: "nam", tone: "nam" },
+        { key: "correlation", label: "Reference vs Model", tone: "model" },
+        { key: "correlation", label: "Reference vs NAM A2", source: "nam", tone: "nam" },
       ],
       fixedDomain: [-1, 1],
     },
@@ -415,8 +419,8 @@
       axis: "ESR (log scale)",
       description: "Error-to-signal ratio over time · logarithmic scale · lower is better",
       fields: [
-        { key: "esr", label: "Model vs BIAS-X", tone: "model" },
-        { key: "esr", label: "Model vs NAM A2", source: "nam", tone: "nam" },
+        { key: "esr", label: "Reference vs Model", tone: "model" },
+        { key: "esr", label: "Reference vs NAM A2", source: "nam", tone: "nam" },
       ],
       scale: "log",
       zeroBaseline: true,
@@ -425,21 +429,123 @@
       axis: "Level (dBFS)",
       description: "Reference and candidate RMS level over time",
       fields: [
-        { key: "reference_level_db", label: "BIAS-X", tone: "reference" },
+        { key: "reference_level_db", label: "Reference (BIAS-X)", tone: "reference" },
         { key: "candidate_level_db", label: "Model", tone: "model" },
-        { key: "reference_level_db", label: "NAM A2", source: "nam", tone: "nam" },
+        { key: "candidate_level_db", label: "NAM A2", source: "nam", tone: "nam" },
       ],
     },
     peak_db: {
       axis: "Peak (dBFS)",
       description: "Reference and candidate peak level over time",
       fields: [
-        { key: "reference_peak_db", label: "BIAS-X", tone: "reference" },
+        { key: "reference_peak_db", label: "Reference (BIAS-X)", tone: "reference" },
         { key: "candidate_peak_db", label: "Model", tone: "model" },
-        { key: "reference_peak_db", label: "NAM A2", source: "nam", tone: "nam" },
+        { key: "candidate_peak_db", label: "NAM A2", source: "nam", tone: "nam" },
       ],
     },
   };
+
+  const WAVEFORM_TONES = new Set(["dry", "nam", "model"]);
+
+  function renderWaveform(payload) {
+    const chart = elements.waveformChart;
+    if (!chart) return;
+    chart.replaceChildren();
+    elements.waveformLegend?.replaceChildren();
+    const series = Array.isArray(payload?.series)
+      ? payload.series.filter((item) => item && Array.isArray(item.values) && item.values.length > 0)
+      : [];
+    if (series.length === 0) {
+      setText(elements.waveformStatus, "Waveform data is unavailable for this case");
+      const empty = createSvg("text", { class: "waveform-empty", x: 500, y: 180, "text-anchor": "middle" });
+      empty.textContent = "No waveform available";
+      chart.append(empty);
+      return;
+    }
+
+    const width = 1_000;
+    const height = 360;
+    const margin = { top: 26, right: 24, bottom: 38, left: 24 };
+    const innerWidth = width - margin.left - margin.right;
+    const center = margin.top + (height - margin.top - margin.bottom) / 2;
+    const amplitude = (height - margin.top - margin.bottom) * 0.43;
+    const globalPeak = Math.max(
+      0.000001,
+      ...series.flatMap((item) => item.values.map((value) => finite(value) ?? 0)),
+    );
+
+    const grid = createSvg("g", { "aria-hidden": "true" });
+    for (let index = 0; index <= 8; index += 1) {
+      const x = margin.left + (index / 8) * innerWidth;
+      grid.append(createSvg("line", { class: "waveform-grid", x1: x, x2: x, y1: margin.top, y2: height - margin.bottom }));
+    }
+    grid.append(createSvg("line", { class: "waveform-center", x1: margin.left, x2: width - margin.right, y1: center, y2: center }));
+    const duration = finite(payload?.duration_seconds) ?? finite(state.detail?.duration_seconds) ?? 0;
+    for (let index = 0; index <= 4; index += 1) {
+      const label = createSvg("text", {
+        class: "waveform-label",
+        x: margin.left + (index / 4) * innerWidth,
+        y: height - 12,
+        "text-anchor": index === 0 ? "start" : index === 4 ? "end" : "middle",
+      });
+      label.textContent = `${formatNumber((duration * index) / 4, 2)}s`;
+      grid.append(label);
+    }
+    chart.append(grid);
+
+    for (const item of series) {
+      const tone = WAVEFORM_TONES.has(item.key) ? item.key : "dry";
+      const values = item.values.map((value) => Math.max(0, finite(value) ?? 0));
+      const top = values.map((value, index) => ({
+        x: margin.left + (index / Math.max(values.length - 1, 1)) * innerWidth,
+        y: center - (value / globalPeak) * amplitude,
+      }));
+      const bottom = [...top].reverse().map((point) => ({ x: point.x, y: center + (center - point.y) }));
+      const coordinates = [...top, ...bottom];
+      const pathData = coordinates
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+        .join(" ");
+      chart.append(createSvg("path", {
+        class: `waveform-series tone-${tone}`,
+        d: `${pathData} Z`,
+        "aria-label": item.label || tone,
+      }));
+      if (elements.waveformLegend) {
+        const label = createElement("span");
+        label.append(
+          createElement("i", `tone-${tone}`),
+          document.createTextNode(item.label || titleCase(tone)),
+        );
+        elements.waveformLegend.append(label);
+      }
+    }
+    const pointCount = Math.max(...series.map((item) => item.values.length));
+    setText(elements.waveformStatus, `${pointCount} envelope points per source · ${formatNumber(duration, 2)}s`);
+  }
+
+  async function loadWaveform(detail) {
+    const caseId = String(detail.case_id);
+    const cached = state.waveformCache.get(caseId);
+    if (cached) {
+      renderWaveform(cached);
+      return;
+    }
+    setText(elements.waveformStatus, "Loading selected case…");
+    elements.waveformChart?.replaceChildren();
+    elements.waveformLegend?.replaceChildren();
+    try {
+      const payload = await requestJson(
+        detail.waveform_url
+        || `/api/v1/runs/${encodeURIComponent(state.runId)}/cases/${encodeURIComponent(caseId)}/waveform`,
+      );
+      state.waveformCache.set(caseId, payload);
+      if (state.currentCaseId === caseId) renderWaveform(payload);
+    } catch {
+      if (state.currentCaseId === caseId) {
+        setText(elements.waveformStatus, "Waveform could not be loaded");
+      }
+    }
+  }
 
   function seriesFor(detail, field) {
     return analysisPoints(detail, field.source)
@@ -692,6 +798,7 @@
     updateNavigation(detail);
     renderChart();
     showState("content");
+    void loadWaveform(detail);
   }
 
   function canonicalUrl(detail) {

@@ -138,9 +138,9 @@ class ScoringService:
         nam_metrics = (
             await asyncio.to_thread(
                 self._metrics_from_audio,
+                reference_bytes,
                 nam_reference_bytes,
-                candidate_bytes,
-                reference_latency_samples=0,
+                reference_latency_samples=reference_latency_samples,
             )
             if nam_reference_bytes is not None
             else None
@@ -313,7 +313,7 @@ def _summary(values: Sequence[float], *, higher_is_better: bool = False) -> dict
 def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "contract": {
-            "version": "top-arena-audio-v2",
+            "version": "top-arena-audio-v3",
             "sample_rate": 48_000,
             "esr_epsilon": 1e-12,
             "analysis": {
@@ -325,7 +325,7 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             "human_weighting": "A-weighted spectral ESR",
             "comparisons": {
                 "bias_x": "candidate vs latency-aligned BIAS X reference",
-                "nam_a2_full": "candidate vs 200-epoch static NAM A2 Full baseline",
+                "nam_a2_full": "NAM A2 Full baseline vs latency-aligned BIAS X reference",
             },
             "mrstft": [
                 {"fft": 512, "hop": 50, "window": 240},

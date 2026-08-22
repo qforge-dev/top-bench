@@ -9,8 +9,8 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-audio-lab">
-    <script defer src="/static/case_detail.js?v=20260822-audio-lab-v3"></script>
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-reference-waveform">
+    <script defer src="/static/case_detail.js?v=20260822-reference-waveform"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -105,33 +105,19 @@
 
             <dl id="case-metrics" class="case-metrics" aria-label="Selected case scores"></dl>
 
-            <section class="analysis-panel panel" aria-labelledby="analysis-title">
-              <div class="analysis-heading">
+            <section class="waveform-panel panel" aria-labelledby="waveform-title">
+              <div class="waveform-heading">
                 <div>
-                  <p class="lab-block-label">Overlay / selected case</p>
-                  <h3 id="analysis-title">Analysis</h3>
-                  <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
+                  <p class="lab-block-label">Overlay / full file</p>
+                  <h3 id="waveform-title">Waveform comparison</h3>
                 </div>
-              <div class="metric-tabs" role="tablist" aria-label="Chart metric">
-                <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" aria-controls="chart-panel" tabindex="0" type="button">ESR</button>
-                <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Level dB</button>
-                <button id="tab-peak" role="tab" data-metric="peak_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Peak dB</button>
-                <button id="tab-correlation" role="tab" data-metric="correlation" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Correlation</button>
+                <div id="waveform-legend" class="waveform-legend" aria-label="Waveform legend"></div>
               </div>
-            </div>
-            <div id="chart-panel" role="tabpanel" aria-labelledby="tab-esr">
-              <div id="case-chart-legend" class="case-chart-legend" aria-label="Chart legend"></div>
-              <div class="case-chart-shell">
-                <svg
-                  id="case-chart"
-                  class="case-chart"
-                  viewBox="0 0 1000 420"
-                  role="img"
-                  aria-labelledby="analysis-title chart-summary"
-                ></svg>
+              <p id="waveform-status" class="waveform-status" role="status" aria-live="polite">Loading selected case…</p>
+              <div class="waveform-shell">
+                <svg id="waveform-chart" class="waveform-chart" viewBox="0 0 1000 360" role="img" aria-labelledby="waveform-title waveform-status"></svg>
               </div>
-            </div>
-          </section>
+            </section>
 
             <section class="listening-lab panel" aria-labelledby="audio-title">
               <div class="listening-heading">
@@ -175,6 +161,28 @@
                   <p id="nam-missing" class="audio-missing" hidden>NAM baseline audio is unavailable.</p>
                   <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
                 </article>
+              </div>
+            </section>
+
+            <section class="analysis-panel panel" aria-labelledby="analysis-title">
+              <div class="analysis-heading">
+                <div>
+                  <p class="lab-block-label">Analysis / selected case</p>
+                  <h3 id="analysis-title">Metric analysis</h3>
+                  <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
+                </div>
+                <div class="metric-tabs" role="tablist" aria-label="Chart metric">
+                  <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" aria-controls="chart-panel" tabindex="0" type="button">ESR</button>
+                  <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Level dB</button>
+                  <button id="tab-peak" role="tab" data-metric="peak_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Peak dB</button>
+                  <button id="tab-correlation" role="tab" data-metric="correlation" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Correlation</button>
+                </div>
+              </div>
+              <div id="chart-panel" role="tabpanel" aria-labelledby="tab-esr">
+                <div id="case-chart-legend" class="case-chart-legend" aria-label="Chart legend"></div>
+                <div class="case-chart-shell">
+                  <svg id="case-chart" class="case-chart" viewBox="0 0 1000 420" role="img" aria-labelledby="analysis-title chart-summary"></svg>
+                </div>
               </div>
             </section>
 

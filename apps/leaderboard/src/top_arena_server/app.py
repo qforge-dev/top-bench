@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -35,9 +36,12 @@ from .schemas import (
     RunCaseIndexResponse,
     RunCaseMetricsResponse,
     RunResponse,
+    WaveformResponse,
+    WaveformSeriesResponse,
 )
 from .scoring import ScoringService
 from .storage import ObjectStorage, create_storage
+from .waveform import waveform_envelope
 
 
 @dataclass(frozen=True, slots=True)
@@ -603,6 +607,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 candidate=candidate_url,
                 nam=nam_url,
             ),
+            waveform_url=f"/api/v1/runs/{run_id}/cases/{case_id}/waveform",
             url=_case_page_url(run_id, case_id),
             previous_url=(
                 _case_page_url(run_id, previous_location.case_id)
@@ -612,6 +617,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             next_url=(
                 _case_page_url(run_id, next_location.case_id) if next_location is not None else None
             ),
+        )
+
+    @app.get(
+        "/api/v1/runs/{run_id}/cases/{case_id}/waveform",
+        response_model=WaveformResponse,
+        tags=["runs"],
+    )
+    async def case_waveform(run_id: str, case_id: str) -> WaveformResponse:
+        async with database.session() as session:
+            row = (
+                await session.execute(
+                    select(
+                        BenchmarkCase.dry_key,
+                        BenchmarkCase.nam_reference_wet_key,
+                        RunCase.candidate_wet_key,
+                        BenchmarkCase.duration_seconds,
+                    )
+                    .select_from(RunCase)
+                    .join(BenchmarkCase, BenchmarkCase.id == RunCase.benchmark_case_id)
+                    .where(
+                        RunCase.run_id == run_id,
+                        RunCase.benchmark_case_id == case_id,
+                    )
+                )
+            ).one_or_none()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+        sources: list[tuple[Literal["dry", "nam", "model"], str, str | None]] = [
+            ("dry", "Dry", row.dry_key),
+            ("nam", "NAM A2", row.nam_reference_wet_key),
+            ("model", "Model", row.candidate_wet_key),
+        ]
+        available = [(key, label, object_key) for key, label, object_key in sources if object_key]
+        encoded = await asyncio.gather(*(storage.get(object_key) for _, _, object_key in available))
+        envelopes = await asyncio.gather(
+            *(asyncio.to_thread(waveform_envelope, value) for value in encoded)
+        )
+        return WaveformResponse(
+            duration_seconds=row.duration_seconds,
+            series=[
+                WaveformSeriesResponse(key=key, label=label, values=values)
+                for (key, label, _object_key), values in zip(available, envelopes, strict=True)
+            ],
         )
 
     @app.get(

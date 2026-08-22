@@ -76,8 +76,8 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
         assert result.status == "completed"
         assert result.total_cases == 4
         assert result.completed_cases == 4
-        assert result.metrics["contract"]["version"] == "top-arena-audio-v2"  # type: ignore[index]
-        assert result.metrics["nam_a2_full"]["esr"]["mean"] == 0.0  # type: ignore[index]
+        assert result.metrics["contract"]["version"] == "top-arena-audio-v3"  # type: ignore[index]
+        assert result.metrics["nam_a2_full"]["esr"]["mean"] is not None  # type: ignore[index]
 
         failed_run = BenchmarkRun(
             gateway=HttpBenchmarkGateway(
