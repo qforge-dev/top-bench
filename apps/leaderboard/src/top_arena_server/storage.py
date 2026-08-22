@@ -20,6 +20,8 @@ class ObjectStorage(Protocol):
 
     async def exists(self, key: str) -> bool: ...
 
+    async def delete(self, key: str) -> None: ...
+
 
 class FileObjectStorage:
     def __init__(self, root: Path) -> None:
@@ -50,6 +52,9 @@ class FileObjectStorage:
 
     async def exists(self, key: str) -> bool:
         return await asyncio.to_thread(self._path(key).is_file)
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(self._path(key).unlink, missing_ok=True)
 
 
 class S3ObjectStorage:
@@ -95,6 +100,13 @@ class S3ObjectStorage:
                 return False
             raise
         return True
+
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(
+            self._client.delete_object,
+            Bucket=self._bucket,
+            Key=self._key(key),
+        )
 
 
 def create_storage(settings: Settings) -> ObjectStorage:

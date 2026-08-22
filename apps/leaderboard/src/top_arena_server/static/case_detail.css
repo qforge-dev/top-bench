@@ -1397,6 +1397,107 @@
   grid-template-columns: 180px minmax(0, 1fr);
 }
 
+.sidebar-actions {
+  display: grid;
+  margin-top: auto;
+}
+
+.sidebar-actions .sidebar-action {
+  margin-top: 0;
+}
+
+.sidebar-delete {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid #4c252b;
+  background: #160d11;
+  color: #ff8a95;
+  cursor: pointer;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.sidebar-delete:hover,
+.sidebar-delete:focus-visible {
+  background: #251116;
+  color: #ffb1b8;
+}
+
+.delete-dialog {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  padding: 20px;
+  background: rgb(3 6 9 / 78%);
+  place-items: center;
+}
+
+.delete-dialog[hidden] {
+  display: none;
+}
+
+.delete-dialog-card {
+  width: min(440px, 100%);
+  padding: 24px;
+  border-color: #5c282f;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
+}
+
+.delete-dialog-card h2 {
+  margin: 6px 0 10px;
+  font-size: 1.35rem;
+}
+
+.delete-dialog-card > p:not(.lab-block-label) {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.delete-run-status {
+  min-height: 21px;
+  padding-top: 10px;
+  color: #ff9ca5 !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+  gap: 8px;
+}
+
+.danger-button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #a53d49;
+  background: #8a2631;
+  color: white;
+  cursor: pointer;
+  font: 800 0.68rem ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  background: #ad3542;
+}
+
+.danger-button:disabled,
+.delete-dialog .action-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .run-summary {
   margin: 0;
   border-top: 0;

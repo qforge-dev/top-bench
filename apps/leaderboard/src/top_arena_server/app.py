@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -42,6 +43,8 @@ from .schemas import (
 from .scoring import ScoringService
 from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -504,6 +507,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
         return _run_response(run)
+
+    @app.delete(
+        "/api/v1/runs/{run_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["runs"],
+    )
+    async def delete_run(run_id: str) -> Response:
+        async with database.session() as session:
+            run = await session.scalar(
+                select(BenchmarkRun)
+                .options(selectinload(BenchmarkRun.cases), selectinload(BenchmarkRun.events))
+                .where(BenchmarkRun.id == run_id)
+            )
+            if run is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+            if run.status not in {"completed", "failed"}:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "only completed or failed runs can be deleted",
+                )
+            candidate_keys = {
+                run_case.candidate_wet_key
+                for run_case in run.cases
+                if run_case.candidate_wet_key is not None
+            }
+            await session.delete(run)
+
+        cleanup_results = await asyncio.gather(
+            *(storage.delete(key) for key in candidate_keys),
+            return_exceptions=True,
+        )
+        for key, result in zip(candidate_keys, cleanup_results, strict=True):
+            if isinstance(result, BaseException):
+                LOGGER.warning("could not delete candidate object %s: %s", key, result)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get(
         "/api/v1/runs/{run_id}/case-index",

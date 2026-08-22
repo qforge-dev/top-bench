@@ -25,6 +25,12 @@
     comparisonModel: document.querySelector("#comparison-model"),
     dryAudio: document.querySelector("#dry-audio"),
     dryDownload: document.querySelector("#dry-download"),
+    deleteCancel: document.querySelector("#cancel-delete-run"),
+    deleteConfirm: document.querySelector("#confirm-delete-run"),
+    deleteDialog: document.querySelector("#delete-run-dialog"),
+    deleteMessage: document.querySelector("#delete-run-message"),
+    deleteRun: document.querySelector("#delete-run"),
+    deleteStatus: document.querySelector("#delete-run-status"),
     empty: document.querySelector("#detail-empty"),
     error: document.querySelector("#detail-error"),
     errorMessage: document.querySelector("#detail-error-message"),
@@ -56,6 +62,7 @@
   const state = {
     cases: [],
     currentCaseId: root.dataset.caseId || "",
+    deleteInFlight: false,
     detail: null,
     metric: "esr",
     refreshTimer: null,
@@ -175,6 +182,51 @@
     const completed = finite(run.completed_cases) ?? 0;
     const total = finite(run.total_cases) ?? 0;
     addDefinitionListItem(elements.runSummary, "Cases", `${formatCompact(completed)} / ${formatCompact(total)}`, titleCase(status));
+  }
+
+  function closeDeleteDialog() {
+    if (!elements.deleteDialog || state.deleteInFlight) return;
+    elements.deleteDialog.hidden = true;
+    setText(elements.deleteStatus, "");
+    elements.deleteRun?.focus();
+  }
+
+  function openDeleteDialog() {
+    if (!elements.deleteDialog || state.deleteInFlight) return;
+    stopSequence();
+    const runName = text(state.detail?.run?.name || elements.runName?.textContent, "this result");
+    setText(
+      elements.deleteMessage,
+      `Delete “${runName}”? This permanently removes its scores and events from the leaderboard.`,
+    );
+    setText(elements.deleteStatus, "");
+    elements.deleteDialog.hidden = false;
+    elements.deleteConfirm?.focus();
+  }
+
+  async function confirmDeleteRun() {
+    if (state.deleteInFlight) return;
+    state.deleteInFlight = true;
+    clearRefresh();
+    if (elements.deleteConfirm) elements.deleteConfirm.disabled = true;
+    if (elements.deleteCancel) elements.deleteCancel.disabled = true;
+    setText(elements.deleteStatus, "Deleting result…");
+    try {
+      const response = await fetch(`/api/v1/runs/${encodeURIComponent(state.runId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(`Delete failed (${response.status})`);
+      setText(elements.deleteStatus, "Result deleted. Returning to leaderboard…");
+      window.setTimeout(() => window.location.assign("/"), 250);
+    } catch (error) {
+      state.deleteInFlight = false;
+      if (elements.deleteConfirm) elements.deleteConfirm.disabled = false;
+      if (elements.deleteCancel) elements.deleteCancel.disabled = false;
+      setText(
+        elements.deleteStatus,
+        error instanceof Error ? `${error.message}. Please try again.` : "Delete failed. Please try again.",
+      );
+    }
   }
 
   function showState(kind, message = "") {
@@ -908,6 +960,18 @@
   elements.retry?.addEventListener("click", () => {
     if (state.cases.length > 0 && state.currentCaseId) void loadCase(state.currentCaseId, { historyMode: "none" });
     else void boot();
+  });
+  elements.deleteRun?.addEventListener("click", openDeleteDialog);
+  elements.deleteCancel?.addEventListener("click", closeDeleteDialog);
+  elements.deleteConfirm?.addEventListener("click", () => void confirmDeleteRun());
+  elements.deleteDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.deleteDialog) closeDeleteDialog();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && elements.deleteDialog && !elements.deleteDialog.hidden) {
+      event.preventDefault();
+      closeDeleteDialog();
+    }
   });
 
   for (const tab of elements.tabs) {

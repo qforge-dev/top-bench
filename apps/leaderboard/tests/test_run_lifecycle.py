@@ -10,7 +10,7 @@ import soundfile as sf
 from sqlalchemy import select
 from top_arena_server.app import create_app
 from top_arena_server.config import Settings
-from top_arena_server.models import BenchmarkCase
+from top_arena_server.models import BenchmarkCase, RunCase
 from top_arena_server.seed import seed_sample_dataset
 
 
@@ -162,3 +162,15 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                 "demo-bias-x",
                 "pg-clean",
             ]
+
+            async with app.state.services.database.session() as session:
+                candidate_key = await session.scalar(
+                    select(RunCase.candidate_wet_key).where(RunCase.run_id == run_id)
+                )
+            assert candidate_key is not None
+            assert await app.state.services.storage.exists(candidate_key)
+            delete_response = await client.delete(f"/api/v1/runs/{run_id}")
+            assert delete_response.status_code == 204
+            assert not await app.state.services.storage.exists(candidate_key)
+            assert (await client.get(f"/api/v1/runs/{run_id}")).status_code == 404
+            assert "lifecycle-model" not in (await client.get("/api/v1/leaderboard")).text

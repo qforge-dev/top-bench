@@ -9,8 +9,8 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-reference-waveform">
-    <script defer src="/static/case_detail.js?v=20260822-reference-waveform"></script>
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-delete-run">
+    <script defer src="/static/case_detail.js?v=20260822-delete-run"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -94,7 +94,10 @@
               <div id="position-chips" class="position-chips" aria-label="Amp positions"></div>
             </section>
 
-            <a class="sidebar-action" href="/">← Leaderboard</a>
+            <div class="sidebar-actions">
+              <a class="sidebar-action" href="/">← Leaderboard</a>
+              <button id="delete-run" class="sidebar-delete" type="button">Delete result</button>
+            </div>
           </aside>
 
           <section id="case-inspector" class="lab-workspace" aria-labelledby="comparison-title">
@@ -197,6 +200,19 @@
         </div>
       </div>
     </main>
+
+    <div id="delete-run-dialog" class="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-run-title" hidden>
+      <div class="delete-dialog-card panel">
+        <p class="lab-block-label">Delete benchmark result</p>
+        <h2 id="delete-run-title">Delete this result?</h2>
+        <p id="delete-run-message">This permanently removes the run, its scores, and its events from the leaderboard.</p>
+        <p id="delete-run-status" class="delete-run-status" role="status" aria-live="polite"></p>
+        <div class="delete-dialog-actions">
+          <button id="cancel-delete-run" class="action-button" type="button">Cancel</button>
+          <button id="confirm-delete-run" class="danger-button" type="button">Delete result</button>
+        </div>
+      </div>
+    </div>
 
   </body>
 </html>

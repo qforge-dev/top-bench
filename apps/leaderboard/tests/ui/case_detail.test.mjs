@@ -123,6 +123,12 @@ function markup() {
       <div id="detail-loading"></div><div id="detail-error" hidden></div><div id="detail-empty" hidden></div>
       <div id="detail-content" hidden>
         <span id="run-status"></span><h1 id="run-name"></h1><p id="run-description"></p><span id="run-creator"></span><span id="run-amp"></span>
+        <button id="delete-run" type="button">Delete result</button>
+        <div id="delete-run-dialog" role="dialog" aria-modal="true" hidden>
+          <p id="delete-run-message"></p><p id="delete-run-status"></p>
+          <button id="cancel-delete-run" type="button">Cancel</button>
+          <button id="confirm-delete-run" type="button">Delete result</button>
+        </div>
         <div id="run-summary"></div>
         <button id="previous-case" type="button">Previous</button>
         <select id="case-select"></select><span id="case-position"></span>
@@ -210,9 +216,12 @@ async function setup({
     };
   }
   let detailRequests = 0;
-  window.fetch = async (input) => {
+  window.fetch = async (input, options = {}) => {
     const url = String(input);
-    requests.push(url);
+    requests.push(options.method ? `${options.method} ${url}` : url);
+    if (options.method === "DELETE") {
+      return { ok: true, status: 204 };
+    }
     if (url.endsWith("/detail")) {
       detailRequests += 1;
       if (detailRequests > failAfterDetailRequests) {
@@ -381,4 +390,25 @@ test("a transient live-refresh failure keeps the populated inspector visible and
 
   assert.equal(document.querySelector("#detail-content").hidden, false);
   assert.equal(document.querySelector("#detail-error").hidden, true);
+});
+
+test("deleting a result requires explicit confirmation", async () => {
+  const { requests, timers, window } = await setup({ captureTimers: true });
+  const document = window.document;
+  const dialog = document.querySelector("#delete-run-dialog");
+
+  document.querySelector("#delete-run").click();
+  assert.equal(dialog.hidden, false);
+  assert.match(document.querySelector("#delete-run-message").textContent, /Velvet Drive/);
+
+  document.querySelector("#cancel-delete-run").click();
+  assert.equal(dialog.hidden, true);
+  assert.equal(requests.some((request) => request.startsWith("DELETE ")), false);
+
+  document.querySelector("#delete-run").click();
+  document.querySelector("#confirm-delete-run").click();
+  await waitFor(() => assert.ok(requests.includes("DELETE /api/v1/runs/run-1")));
+  await waitFor(() => assert.match(document.querySelector("#delete-run-status").textContent, /deleted/i));
+  assert.equal(document.querySelector("#confirm-delete-run").disabled, true);
+  assert.equal(timers.at(-1).delay, 250);
 });
