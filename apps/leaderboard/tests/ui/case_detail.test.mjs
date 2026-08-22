@@ -198,7 +198,7 @@ async function setup({
   });
   window.HTMLMediaElement.prototype.play = function play() {
     this.dataset.playing = "true";
-    mediaPlays.push({ id: this.id, currentTime: this.currentTime });
+    mediaPlays.push({ id: this.id, currentTime: this.currentTime, muted: this.muted });
     return Promise.resolve();
   };
   window.HTMLMediaElement.prototype.pause = function pause() {
@@ -312,26 +312,31 @@ test("play sequence switches sources across one continuous six-part timeline", a
   const document = window.document;
 
   document.querySelector("#play-sequence").click();
-  await waitFor(() => assert.equal(mediaPlays.length, 1));
+  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 1));
   assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.deepEqual(mediaPlays[0], { id: "reference-audio", currentTime: 0 });
+  assert.deepEqual(mediaPlays.slice(0, 3), [
+    { id: "reference-audio", currentTime: 0, muted: true },
+    { id: "candidate-audio", currentTime: 0, muted: true },
+    { id: "nam-audio", currentTime: 0, muted: true },
+  ]);
+  assert.deepEqual(mediaPlays[3], { id: "reference-audio", currentTime: 0, muted: false });
   assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 6.*BIAS-X/);
   assert.equal(document.querySelector("#play-sequence").textContent, "Stop sequence");
 
   assert.ok(Math.abs(timers[0].delay - (5_000 / 6)) < 0.001);
   timers[0].callback();
-  await waitFor(() => assert.equal(mediaPlays.length, 2));
+  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 2));
   assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.ok(Math.abs(mediaPlays[1].currentTime - (5 / 6)) < 0.000001);
-  assert.equal(mediaPlays[1].id, "candidate-audio");
+  assert.ok(Math.abs(mediaPlays[4].currentTime - (5 / 6)) < 0.000001);
+  assert.equal(mediaPlays[4].id, "candidate-audio");
   assert.equal(document.querySelector('[data-sequence-index="1"]').getAttribute("aria-current"), "true");
 
   timers[1].callback();
-  await waitFor(() => assert.equal(mediaPlays.length, 3));
+  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 3));
   assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.ok(Math.abs(mediaPlays[2].currentTime - (10 / 6)) < 0.000001);
-  assert.equal(mediaPlays[2].id, "nam-audio");
+  assert.ok(Math.abs(mediaPlays[5].currentTime - (10 / 6)) < 0.000001);
+  assert.equal(mediaPlays[5].id, "nam-audio");
   assert.equal(document.querySelector('[data-sequence-index="2"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM A2/);
 

@@ -445,25 +445,28 @@
     }, duration * 1_000);
   }
 
-  function waitUntilPlayable(audio) {
-    if (audio.readyState >= 3) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const cleanup = () => {
-        audio.removeEventListener("canplaythrough", ready);
-        audio.removeEventListener("error", failed);
-      };
-      const ready = () => {
-        cleanup();
-        resolve();
-      };
-      const failed = () => {
-        cleanup();
-        reject(new Error("Audio could not be buffered"));
-      };
-      audio.addEventListener("canplaythrough", ready);
-      audio.addEventListener("error", failed);
+  function prepareSequenceSources(sources) {
+    const previousMuted = sources.map((audio) => audio.muted);
+    const reset = () => {
+      sources.forEach((audio, index) => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = previousMuted[index];
+      });
+    };
+    const playback = sources.map((audio) => {
+      audio.muted = true;
+      audio.currentTime = 0;
       audio.load();
+      return Promise.resolve(audio.play());
     });
+    return Promise.all(playback).then(
+      () => reset(),
+      (error) => {
+        reset();
+        throw error;
+      },
+    );
   }
 
   function startSequence(index = 0) {
@@ -478,7 +481,7 @@
       stopSequence("All three comparison sources are required");
       return;
     }
-    void Promise.all(sources.map((audio) => waitUntilPlayable(audio))).then(
+    void prepareSequenceSources(sources).then(
       () => {
         if (state.sequenceActive && state.sequenceGeneration === generation) playSequenceStep(index);
       },
