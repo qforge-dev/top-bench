@@ -362,20 +362,29 @@
       if (active) part.setAttribute("aria-current", "true");
       else part.removeAttribute("aria-current");
     });
-    try {
-      audio.currentTime = duration * index;
-    } catch {
-      // Some browsers only allow seeking once media metadata is available.
-    }
     setText(elements.sequenceStatus, `${index + 1} / ${elements.sequenceParts.length} · ${label}`);
-    const playback = audio.play();
-    if (playback && typeof playback.catch === "function") {
-      playback.catch(() => stopSequence("Playback could not start"));
+    const beginPlayback = () => {
+      if (!state.sequenceActive || state.sequenceIndex !== index) return;
+      try {
+        audio.currentTime = duration * index;
+      } catch {
+        stopSequence("Audio could not seek to this section");
+        return;
+      }
+      const playback = audio.play();
+      if (playback && typeof playback.catch === "function") {
+        playback.catch(() => stopSequence("Playback could not start"));
+      }
+      state.sequenceTimer = window.setTimeout(() => {
+        if (!state.sequenceActive) return;
+        playSequenceStep(index + 1);
+      }, duration * 1_000);
+    };
+    if (audio.readyState >= 1) beginPlayback();
+    else {
+      audio.addEventListener("loadedmetadata", beginPlayback, { once: true });
+      audio.load();
     }
-    state.sequenceTimer = window.setTimeout(() => {
-      if (!state.sequenceActive) return;
-      playSequenceStep(index + 1);
-    }, duration * 1_000);
   }
 
   function startSequence(index = 0) {

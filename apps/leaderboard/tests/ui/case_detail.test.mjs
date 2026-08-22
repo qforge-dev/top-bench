@@ -178,6 +178,7 @@ async function setup({
   });
   const { window } = dom;
   const requests = [];
+  const mediaLoads = [];
   const mediaPlays = [];
   const timers = [];
   Object.defineProperty(window.HTMLMediaElement.prototype, "paused", {
@@ -191,6 +192,10 @@ async function setup({
   };
   window.HTMLMediaElement.prototype.pause = function pause() {
     this.dataset.playing = "false";
+  };
+  window.HTMLMediaElement.prototype.load = function load() {
+    mediaLoads.push(this.id);
+    this.dispatchEvent(new window.Event("loadedmetadata"));
   };
   if (captureTimers) {
     window.setTimeout = (callback, delay) => {
@@ -226,7 +231,7 @@ async function setup({
   const script = await readFile(SCRIPT_URL, "utf8");
   window.eval(script);
   await waitFor(() => assert.equal(window.document.querySelector("#detail-content").hidden, false));
-  return { mediaPlays, requests, timers, window };
+  return { mediaLoads, mediaPlays, requests, timers, window };
 }
 
 test("deep link loads one case lazily and renders its summary, graph, and audio", async () => {
@@ -274,11 +279,12 @@ test("large ESR ranges use a readable logarithmic scale", async () => {
 });
 
 test("play sequence alternates synchronized BIAS-X and model sections", async () => {
-  const { mediaPlays, timers, window } = await setup({ captureTimers: true });
+  const { mediaLoads, mediaPlays, timers, window } = await setup({ captureTimers: true });
   const document = window.document;
 
   document.querySelector("#play-sequence").click();
   await waitFor(() => assert.equal(mediaPlays.length, 1));
+  assert.deepEqual(mediaLoads, ["reference-audio"]);
   assert.deepEqual(mediaPlays[0], { id: "reference-audio", currentTime: 0 });
   assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 4.*BIAS-X/);
@@ -287,6 +293,7 @@ test("play sequence alternates synchronized BIAS-X and model sections", async ()
   assert.equal(timers[0].delay, 1_250);
   timers[0].callback();
   await waitFor(() => assert.equal(mediaPlays.length, 2));
+  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio"]);
   assert.deepEqual(mediaPlays[1], { id: "candidate-audio", currentTime: 1.25 });
   assert.equal(document.querySelector('[data-sequence-index="1"]').getAttribute("aria-current"), "true");
 
