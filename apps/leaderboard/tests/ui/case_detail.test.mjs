@@ -191,6 +191,7 @@ async function setup({
   const requests = [];
   const mediaLoads = [];
   const mediaPlays = [];
+  const audioContextEvents = [];
   const timers = [];
   Object.defineProperty(window.HTMLMediaElement.prototype, "paused", {
     configurable: true,
@@ -208,6 +209,49 @@ async function setup({
     mediaLoads.push(this.id);
     this.dispatchEvent(new window.Event("canplaythrough"));
   };
+  class MockAudioContext {
+    constructor() {
+      this.destination = {};
+      this.sampleRate = 1_000;
+      this.state = "running";
+    }
+
+    resume() { return Promise.resolve(); }
+
+    decodeAudioData(value) {
+      const marker = new Uint8Array(value)[0] + 1;
+      const samples = new Float32Array(5_000).fill(marker);
+      return Promise.resolve({
+        duration: 5,
+        length: samples.length,
+        numberOfChannels: 1,
+        sampleRate: 1_000,
+        getChannelData: () => samples,
+      });
+    }
+
+    createBuffer(channels, length, sampleRate) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return {
+        duration: length / sampleRate,
+        length,
+        numberOfChannels: channels,
+        sampleRate,
+        getChannelData: (channel) => data[channel],
+      };
+    }
+
+    createBufferSource() {
+      const source = {
+        buffer: null,
+        connect() {},
+        start: (_when, offset = 0) => audioContextEvents.push({ type: "start", offset, buffer: source.buffer }),
+        stop: () => audioContextEvents.push({ type: "stop" }),
+      };
+      return source;
+    }
+  }
+  window.AudioContext = MockAudioContext;
   if (captureTimers) {
     window.setTimeout = (callback, delay) => {
       timers.push({ callback, cancelled: false, delay });
@@ -223,6 +267,14 @@ async function setup({
     requests.push(options.method ? `${options.method} ${url}` : url);
     if (options.method === "DELETE") {
       return { ok: true, status: 204 };
+    }
+    if (url.startsWith("/audio/")) {
+      const marker = url.includes("reference") ? 0 : url.includes("candidate") ? 1 : 2;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new Uint8Array([marker]).buffer,
+      };
     }
     if (url.endsWith("/detail")) {
       detailRequests += 1;
@@ -255,7 +307,7 @@ async function setup({
   const script = await readFile(SCRIPT_URL, "utf8");
   window.eval(script);
   await waitFor(() => assert.equal(window.document.querySelector("#detail-content").hidden, false));
-  return { mediaLoads, mediaPlays, requests, timers, window };
+  return { audioContextEvents, mediaLoads, mediaPlays, requests, timers, window };
 }
 
 test("deep link loads one case lazily and renders its summary, graph, and audio", async () => {
@@ -308,35 +360,33 @@ test("large ESR ranges use a readable logarithmic scale", async () => {
 });
 
 test("play sequence switches sources across one continuous six-part timeline", async () => {
-  const { mediaLoads, mediaPlays, timers, window } = await setup({ captureTimers: true });
+  const { audioContextEvents, mediaLoads, mediaPlays, requests, timers, window } = await setup({ captureTimers: true });
   const document = window.document;
 
   document.querySelector("#play-sequence").click();
-  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 1));
-  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.deepEqual(mediaPlays.slice(0, 3), [
-    { id: "reference-audio", currentTime: 0, muted: true },
-    { id: "candidate-audio", currentTime: 0, muted: true },
-    { id: "nam-audio", currentTime: 0, muted: true },
+  await waitFor(() => assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1));
+  assert.deepEqual(requests.filter((request) => request.startsWith("/audio/")), [
+    "/audio/case-a/reference.wav",
+    "/audio/case-a/candidate.wav",
+    "/audio/case-a/nam.flac",
   ]);
-  assert.deepEqual(mediaPlays[3], { id: "reference-audio", currentTime: 0, muted: false });
+  assert.deepEqual(mediaLoads, []);
+  assert.deepEqual(mediaPlays, []);
+  const assembled = audioContextEvents.find((event) => event.type === "start").buffer.getChannelData(0);
+  assert.deepEqual(
+    [100, 900, 1_800, 2_600, 3_500, 4_400].map((index) => assembled[index]),
+    [1, 2, 3, 1, 2, 3],
+  );
   assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 6.*BIAS-X/);
   assert.equal(document.querySelector("#play-sequence").textContent, "Stop sequence");
 
   assert.ok(Math.abs(timers[0].delay - (5_000 / 6)) < 0.001);
   timers[0].callback();
-  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 2));
-  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.ok(Math.abs(mediaPlays[4].currentTime - (5 / 6)) < 0.000001);
-  assert.equal(mediaPlays[4].id, "candidate-audio");
   assert.equal(document.querySelector('[data-sequence-index="1"]').getAttribute("aria-current"), "true");
 
   timers[1].callback();
-  await waitFor(() => assert.equal(mediaPlays.filter((play) => !play.muted).length, 3));
-  assert.deepEqual(mediaLoads, ["reference-audio", "candidate-audio", "nam-audio"]);
-  assert.ok(Math.abs(mediaPlays[5].currentTime - (10 / 6)) < 0.000001);
-  assert.equal(mediaPlays[5].id, "nam-audio");
+  assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1);
   assert.equal(document.querySelector('[data-sequence-index="2"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM A2/);
 

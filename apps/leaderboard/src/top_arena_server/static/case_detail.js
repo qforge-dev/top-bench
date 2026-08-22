@@ -5,12 +5,12 @@
   const REFRESH_INTERVAL_MS = 2_000;
   const TERMINAL_STATUSES = new Set(["completed", "finished", "failed", "error"]);
   const SEQUENCE_SOURCES = [
-    { element: "referenceAudio", label: "BIAS-X" },
-    { element: "candidateAudio", label: "Model" },
-    { element: "namAudio", label: "NAM A2" },
-    { element: "referenceAudio", label: "BIAS-X" },
-    { element: "candidateAudio", label: "Model" },
-    { element: "namAudio", label: "NAM A2" },
+    { label: "BIAS-X" },
+    { label: "Model" },
+    { label: "NAM A2" },
+    { label: "BIAS-X" },
+    { label: "Model" },
+    { label: "NAM A2" },
   ];
 
   const root = document.querySelector("#run-detail");
@@ -77,8 +77,11 @@
     requestSerial: 0,
     runId: root.dataset.runId || "",
     sequenceActive: false,
+    sequenceBufferCache: new Map(),
+    sequenceContext: null,
     sequenceGeneration: 0,
     sequenceIndex: -1,
+    sequenceSource: null,
     sequenceTimer: null,
     waveformCache: new Map(),
   };
@@ -393,6 +396,15 @@
     state.sequenceGeneration += 1;
     state.sequenceActive = false;
     state.sequenceIndex = -1;
+    if (state.sequenceSource) {
+      state.sequenceSource.onended = null;
+      try {
+        state.sequenceSource.stop();
+      } catch {
+        // The source may already have reached its natural end.
+      }
+      state.sequenceSource = null;
+    }
     for (const audio of [elements.referenceAudio, elements.candidateAudio, elements.namAudio]) {
       if (audio && !audio.paused && typeof audio.pause === "function") audio.pause();
     }
@@ -404,23 +416,14 @@
     setText(elements.sequenceStatus, status);
   }
 
-  function playSequenceStep(index) {
+  function showSequenceStep(index, chunkDuration) {
     if (!state.sequenceActive || index < 0 || index >= elements.sequenceParts.length) {
       stopSequence(index >= elements.sequenceParts.length ? "Sequence complete" : "Ready");
       return;
     }
     clearSequenceTimer();
     const source = SEQUENCE_SOURCES[index];
-    const audio = elements[source.element];
     const label = source.label;
-    const duration = Math.max((finite(state.detail?.duration_seconds) ?? 4) / elements.sequenceParts.length, 0.1);
-    if (!audio?.getAttribute("src")) {
-      stopSequence(`${label} audio is unavailable`);
-      return;
-    }
-    for (const candidate of [elements.referenceAudio, elements.candidateAudio, elements.namAudio]) {
-      if (candidate && candidate !== audio && !candidate.paused && typeof candidate.pause === "function") candidate.pause();
-    }
     state.sequenceIndex = index;
     elements.sequenceParts.forEach((part, partIndex) => {
       const active = partIndex === index;
@@ -429,44 +432,89 @@
       else part.removeAttribute("aria-current");
     });
     setText(elements.sequenceStatus, `${index + 1} / ${elements.sequenceParts.length} · ${label}`);
-    try {
-      audio.currentTime = duration * index;
-    } catch {
-      stopSequence("Audio could not seek to this section");
-      return;
-    }
-    const playback = audio.play();
-    if (playback && typeof playback.catch === "function") {
-      playback.catch(() => stopSequence("Playback could not start"));
-    }
     state.sequenceTimer = window.setTimeout(() => {
       if (!state.sequenceActive) return;
-      playSequenceStep(index + 1);
-    }, duration * 1_000);
+      showSequenceStep(index + 1, chunkDuration);
+    }, chunkDuration * 1_000);
   }
 
-  function prepareSequenceSources(sources) {
-    const previousMuted = sources.map((audio) => audio.muted);
-    const reset = () => {
-      sources.forEach((audio, index) => {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.muted = previousMuted[index];
-      });
-    };
-    const playback = sources.map((audio) => {
-      audio.muted = true;
-      audio.currentTime = 0;
-      audio.load();
-      return Promise.resolve(audio.play());
-    });
-    return Promise.all(playback).then(
-      () => reset(),
-      (error) => {
-        reset();
-        throw error;
-      },
+  function getSequenceContext() {
+    if (state.sequenceContext) return state.sequenceContext;
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+    state.sequenceContext = new AudioContextConstructor();
+    return state.sequenceContext;
+  }
+
+  function assembleSequenceBuffer(context, decoded, requestedDuration) {
+    const duration = Math.min(
+      requestedDuration,
+      ...decoded.map((buffer) => buffer.duration),
     );
+    const length = Math.max(1, Math.floor(duration * context.sampleRate));
+    const channelCount = Math.max(...decoded.map((buffer) => buffer.numberOfChannels));
+    const assembled = context.createBuffer(channelCount, length, context.sampleRate);
+    for (let chunk = 0; chunk < SEQUENCE_SOURCES.length; chunk += 1) {
+      const source = decoded[chunk % decoded.length];
+      const start = Math.round((chunk / SEQUENCE_SOURCES.length) * length);
+      const end = Math.round(((chunk + 1) / SEQUENCE_SOURCES.length) * length);
+      for (let channel = 0; channel < channelCount; channel += 1) {
+        const sourceChannel = source.getChannelData(Math.min(channel, source.numberOfChannels - 1));
+        assembled.getChannelData(channel).set(
+          sourceChannel.subarray(start, Math.min(end, sourceChannel.length)),
+          start,
+        );
+      }
+    }
+    return assembled;
+  }
+
+  function loadSequenceBuffer(context) {
+    const caseId = state.currentCaseId;
+    const cached = state.sequenceBufferCache.get(caseId);
+    if (cached) return cached;
+    const audio = state.detail?.audio;
+    const urls = [audio?.reference, audio?.candidate, audio?.nam];
+    if (urls.some((url) => typeof url !== "string" || !url)) {
+      return Promise.reject(new Error("All three comparison sources are required"));
+    }
+    const promise = Promise.all(urls.map(async (url) => {
+      const response = await fetch(url, { cache: "force-cache" });
+      if (!response.ok) throw new Error(`Audio preload failed (${response.status})`);
+      return context.decodeAudioData(await response.arrayBuffer());
+    })).then((decoded) => assembleSequenceBuffer(
+      context,
+      decoded,
+      finite(state.detail?.duration_seconds) ?? Math.min(...decoded.map((buffer) => buffer.duration)),
+    ));
+    state.sequenceBufferCache.set(caseId, promise);
+    promise.catch(() => state.sequenceBufferCache.delete(caseId));
+    return promise;
+  }
+
+  function primeSequenceBuffer() {
+    if (!state.detail) return;
+    const context = getSequenceContext();
+    if (!context) return;
+    void context.resume();
+    void loadSequenceBuffer(context).catch(() => undefined);
+  }
+
+  function playAssembledSequence(context, buffer, index, generation) {
+    if (!state.sequenceActive || state.sequenceGeneration !== generation) return;
+    const source = context.createBufferSource();
+    const chunkDuration = buffer.duration / SEQUENCE_SOURCES.length;
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.onended = () => {
+      if (state.sequenceSource === source && state.sequenceGeneration === generation) {
+        state.sequenceSource = null;
+        stopSequence("Sequence complete");
+      }
+    };
+    state.sequenceSource = source;
+    source.start(0, chunkDuration * index);
+    showSequenceStep(index, chunkDuration);
   }
 
   function startSequence(index = 0) {
@@ -474,19 +522,19 @@
     state.sequenceActive = true;
     const generation = state.sequenceGeneration;
     setSequenceButton(true);
-    setText(elements.sequenceStatus, "Buffering BIAS-X, Model, and NAM A2…");
-    const sources = [elements.referenceAudio, elements.candidateAudio, elements.namAudio];
-    const missing = sources.find((audio) => !audio?.getAttribute("src"));
-    if (missing) {
-      stopSequence("All three comparison sources are required");
+    setText(elements.sequenceStatus, "Preloading full Reference, Model, and NAM A2 clips…");
+    const context = getSequenceContext();
+    if (!context) {
+      stopSequence("This browser does not support seamless audio switching");
       return;
     }
-    void prepareSequenceSources(sources).then(
-      () => {
-        if (state.sequenceActive && state.sequenceGeneration === generation) playSequenceStep(index);
+    const resumed = context.resume();
+    void Promise.all([resumed, loadSequenceBuffer(context)]).then(
+      ([, buffer]) => {
+        playAssembledSequence(context, buffer, index, generation);
       },
       () => {
-        if (state.sequenceGeneration === generation) stopSequence("Audio could not be buffered");
+        if (state.sequenceGeneration === generation) stopSequence("Audio could not be preloaded");
       },
     );
   }
@@ -997,6 +1045,14 @@
   });
   for (const part of elements.sequenceParts) {
     part.addEventListener("click", () => startSequence(Number(part.dataset.sequenceIndex) || 0));
+  }
+  for (const audio of [
+    elements.dryAudio,
+    elements.referenceAudio,
+    elements.candidateAudio,
+    elements.namAudio,
+  ]) {
+    audio?.addEventListener("play", primeSequenceBuffer);
   }
   elements.retry?.addEventListener("click", () => {
     if (state.cases.length > 0 && state.currentCaseId) void loadCase(state.currentCaseId, { historyMode: "none" });
