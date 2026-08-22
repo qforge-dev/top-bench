@@ -94,3 +94,42 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
 });
+
+test("Pareto chart plots positions against ESR on a logarithmic scale", async () => {
+  const values = [
+    ["run-low", 1, 0.001],
+    ["run-mid", 5, 0.01],
+    ["run-high", 10, 0.1],
+  ];
+  const runs = values.map(([id, positions, esr]) => {
+    const value = run(id, id, "blackface-63", "Blackface 63");
+    value.unique_positions_used = positions;
+    value.metrics.esr.mean = esr;
+    return value;
+  });
+  const dom = new JSDOM(markup({ runs }), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  dom.window.setInterval = () => 1;
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  const points = [...document.querySelectorAll("#pareto-chart .run-point")];
+  assert.equal(points.length, 3);
+  const yByRun = new Map(points.map((point) => [
+    point.getAttribute("aria-label").split(":", 1)[0],
+    Number(point.getAttribute("cy")),
+  ]));
+  const upperGap = yByRun.get("run-mid") - yByRun.get("run-high");
+  const lowerGap = yByRun.get("run-low") - yByRun.get("run-mid");
+  assert.ok(Math.abs(upperGap - lowerGap) < 0.001, "each ESR decade should occupy equal height");
+  assert.match(document.querySelector("#pareto-chart .axis-title:last-of-type").textContent, /log/i);
+  assert.deepEqual(
+    [...document.querySelectorAll("#pareto-chart .axis-text")]
+      .map((label) => label.textContent)
+      .filter((label) => label.includes("e-") || label.startsWith("0.")),
+    ["0.001", "0.01", "0.1"],
+  );
+});

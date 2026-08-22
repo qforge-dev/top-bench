@@ -397,7 +397,9 @@
     const chart = elements.chart;
     chart.replaceChildren();
     hideTooltip();
-    const points = runs.filter((run) => run.positions !== null && run.esr.mean !== null);
+    const points = runs.filter((run) => (
+      run.positions !== null && run.esr.mean !== null && run.esr.mean > 0
+    ));
 
     if (points.length === 0) {
       const placeholder = createSvg("text", { class: "chart-placeholder", x: 480, y: 215, "text-anchor": "middle" });
@@ -412,12 +414,21 @@
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
     const maxX = Math.max(...points.map((run) => run.positions));
+    const minY = Math.min(...points.map((run) => run.esr.mean));
     const maxY = Math.max(...points.map((run) => run.esr.mean));
     const xStep = positionTickStep(maxX);
     const xDomainMax = Math.max(1, Math.ceil((maxX + xStep * 0.3) / xStep) * xStep);
-    const yDomainMax = Math.max(0.0001, maxY * 1.14);
+    let yLogMin = Math.floor(Math.log10(minY));
+    let yLogMax = Math.ceil(Math.log10(maxY));
+    if (yLogMin === yLogMax) {
+      yLogMin -= 1;
+      yLogMax += 1;
+    }
+    const yLogSpan = yLogMax - yLogMin;
     const xScale = (value) => margin.left + (value / xDomainMax) * innerWidth;
-    const yScale = (value) => margin.top + innerHeight - (value / yDomainMax) * innerHeight;
+    const yScale = (value) => (
+      margin.top + ((yLogMax - Math.log10(value)) / yLogSpan) * innerHeight
+    );
 
     const defs = createSvg("defs");
     const gradient = createSvg("linearGradient", { id: "frontier-fill", x1: 0, x2: 0, y1: 0, y2: 1 });
@@ -440,13 +451,17 @@
       grid.append(xLabel);
     }
 
-    const yTickCount = 5;
-    for (let index = 0; index <= yTickCount; index += 1) {
-      const ratio = index / yTickCount;
-      const y = margin.top + ratio * innerHeight;
+    const yExponentStep = Math.max(1, Math.ceil(yLogSpan / 6));
+    const yExponents = [];
+    for (let exponent = yLogMin; exponent <= yLogMax; exponent += yExponentStep) {
+      yExponents.push(exponent);
+    }
+    if (yExponents.at(-1) !== yLogMax) yExponents.push(yLogMax);
+    for (const exponent of yExponents) {
+      const y = yScale(10 ** exponent);
       grid.append(createSvg("line", { class: "grid-line", x1: margin.left, x2: margin.left + innerWidth, y1: y, y2: y }));
-      const yLabel = createSvg("text", { class: "axis-text", x: margin.left - 15, y: margin.top + innerHeight - ratio * innerHeight + 4, "text-anchor": "end" });
-      yLabel.textContent = formatScore(yDomainMax * ratio);
+      const yLabel = createSvg("text", { class: "axis-text", x: margin.left - 15, y: y + 4, "text-anchor": "end" });
+      yLabel.textContent = formatScore(10 ** exponent);
       grid.append(yLabel);
     }
     grid.append(
@@ -458,7 +473,7 @@
     const xTitle = createSvg("text", { class: "axis-title", x: margin.left + innerWidth / 2, y: height - 14, "text-anchor": "middle" });
     xTitle.textContent = "Unique positions used (lower is leaner)";
     const yTitle = createSvg("text", { class: "axis-title", transform: `translate(21 ${margin.top + innerHeight / 2}) rotate(-90)`, "text-anchor": "middle" });
-    yTitle.textContent = "Mean ESR (lower is better)";
+    yTitle.textContent = "Mean ESR (log scale · lower is better)";
     chart.append(xTitle, yTitle);
 
     const frontier = paretoFrontier(points);
