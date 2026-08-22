@@ -9,8 +9,8 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260821-compact-nam">
-    <script defer src="/static/case_detail.js?v=20260821-compact-nam-log"></script>
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-audio-lab">
+    <script defer src="/static/case_detail.js?v=20260822-audio-lab"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -64,95 +64,54 @@
       </section>
 
       <div id="detail-content" hidden>
-        <section class="run-overview" aria-labelledby="run-name">
-          <div class="run-title-row">
-            <div class="run-copy">
-              <div class="run-heading-line">
-                <h1 id="run-name">{{ run_name|default("Benchmark run", true) }}</h1>
-                <span id="run-status" class="detail-status">Loading</span>
-              </div>
+        <div class="lab-layout">
+          <aside class="lab-sidebar" aria-label="Benchmark controls">
+            <section class="lab-sidebar-block run-overview" aria-labelledby="run-name">
+              <div class="lab-block-label"><span>01 / Model</span><span id="run-status" class="detail-status">Loading</span></div>
+              <h1 id="run-name">{{ run_name|default("Benchmark run", true) }}</h1>
               <p class="run-byline">
                 <strong id="run-creator">—</strong>
                 <span aria-hidden="true">·</span>
                 <span id="run-amp">—</span>
               </p>
-            </div>
-          </div>
-          <dl id="run-summary" class="run-summary" aria-label="Aggregate run statistics"></dl>
-        </section>
+            </section>
 
-        <section id="case-inspector" class="case-inspector" aria-labelledby="case-title">
-          <div class="case-toolbar">
-            <h2 id="case-title">Cases</h2>
-            <div class="case-navigation" aria-label="Choose a test case">
-              <button id="previous-case" class="case-arrow" type="button" aria-label="Previous test case">
-                <span aria-hidden="true">←</span>
-              </button>
-              <label class="case-picker">
-                <span class="sr-only">Test case</span>
-                <select id="case-select" aria-label="Test case"></select>
-              </label>
-              <output id="case-position" class="case-position" for="case-select">— / —</output>
-              <button id="next-case" class="case-arrow" type="button" aria-label="Next test case">
-                <span aria-hidden="true">→</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="case-identity">
-            <div>
-              <p id="case-label" class="case-label">Test —</p>
-              <p id="case-meta" class="case-meta"></p>
-            </div>
-            <div id="position-chips" class="position-chips" aria-label="Amp positions"></div>
-          </div>
-
-          <dl id="case-metrics" class="case-metrics" aria-label="Selected case scores"></dl>
-
-          <section class="audio-section" aria-labelledby="audio-title">
-            <div class="subsection-heading">
-              <h3 id="audio-title">Audio</h3>
-            </div>
-            <div class="audio-grid">
-              <article class="audio-card">
-                <div class="audio-card-heading">
-                  <div><span class="audio-index">01</span><h4>Dry input</h4></div>
-                </div>
-                <audio id="dry-audio" controls preload="none">Your browser does not support audio playback.</audio>
-                <a id="dry-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
-              </article>
-              <article class="audio-card audio-card-reference">
-                <div class="audio-card-heading">
-                  <div><span class="audio-index">02</span><h4>Reference wet</h4></div>
-                </div>
-                <audio id="reference-audio" controls preload="none">Your browser does not support audio playback.</audio>
-                <a id="reference-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
-              </article>
-              <article class="audio-card audio-card-candidate">
-                <div class="audio-card-heading">
-                  <div><span class="audio-index">03</span><h4>Model wet</h4></div>
-                </div>
-                <audio id="candidate-audio" controls preload="none">Your browser does not support audio playback.</audio>
-                <p id="candidate-missing" class="audio-missing" hidden>Candidate audio has not been uploaded yet.</p>
-                <a id="candidate-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
-              </article>
-              <article class="audio-card audio-card-nam">
-                <div class="audio-card-heading">
-                  <div><span class="audio-index">04</span><h4>NAM A2 wet</h4></div>
-                </div>
-                <audio id="nam-audio" controls preload="none">Your browser does not support audio playback.</audio>
-                <p id="nam-missing" class="audio-missing" hidden>NAM baseline audio is unavailable.</p>
-                <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
-              </article>
-            </div>
-          </section>
-
-          <section class="analysis-panel panel" aria-labelledby="analysis-title">
-            <div class="analysis-heading">
-              <div>
-                <h3 id="analysis-title">Analysis</h3>
-                <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
+            <section class="lab-sidebar-block case-sidebar" aria-labelledby="case-title">
+              <div class="lab-block-label"><span id="case-title">02 / Input</span><output id="case-position" class="case-position" for="case-select">— / —</output></div>
+              <div class="case-navigation" aria-label="Choose a test case">
+                <button id="previous-case" class="case-arrow" type="button" aria-label="Previous test case"><span aria-hidden="true">←</span></button>
+                <label class="case-picker"><span class="sr-only">Test case</span><select id="case-select" aria-label="Test case"></select></label>
+                <button id="next-case" class="case-arrow" type="button" aria-label="Next test case"><span aria-hidden="true">→</span></button>
               </div>
+              <div class="case-identity">
+                <p id="case-label" class="case-label">Test —</p>
+                <p id="case-meta" class="case-meta"></p>
+              </div>
+            </section>
+
+            <section class="lab-sidebar-block position-sidebar" aria-labelledby="position-title">
+              <div class="lab-block-label"><span id="position-title">03 / Positions</span></div>
+              <div id="position-chips" class="position-chips" aria-label="Amp positions"></div>
+            </section>
+
+            <a class="sidebar-action" href="/">← Leaderboard</a>
+          </aside>
+
+          <section id="case-inspector" class="lab-workspace" aria-labelledby="comparison-title">
+            <header class="signal-header">
+              <p class="lab-block-label">Signal comparison</p>
+              <h2 id="comparison-title"><span id="comparison-reference">BIAS-X</span> <em>vs</em> <span id="comparison-model">model</span></h2>
+            </header>
+
+            <dl id="case-metrics" class="case-metrics" aria-label="Selected case scores"></dl>
+
+            <section class="analysis-panel panel" aria-labelledby="analysis-title">
+              <div class="analysis-heading">
+                <div>
+                  <p class="lab-block-label">Overlay / selected case</p>
+                  <h3 id="analysis-title">Analysis</h3>
+                  <p id="chart-summary" class="chart-summary" aria-live="polite"></p>
+                </div>
               <div class="metric-tabs" role="tablist" aria-label="Chart metric">
                 <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" aria-controls="chart-panel" tabindex="0" type="button">ESR</button>
                 <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" aria-controls="chart-panel" tabindex="-1" type="button">Level dB</button>
@@ -173,7 +132,61 @@
               </div>
             </div>
           </section>
-        </section>
+
+            <section class="listening-lab panel" aria-labelledby="audio-title">
+              <div class="listening-heading">
+                <div>
+                  <p class="lab-block-label">Listen / A–B</p>
+                  <h3 id="audio-title">Audio comparison</h3>
+                </div>
+                <button id="play-sequence" class="sequence-play" type="button"><span aria-hidden="true">▶</span> Play sequence</button>
+              </div>
+              <div class="sequence-copy">
+                <span id="sequence-status" role="status" aria-live="polite">Ready</span>
+                <span>Four equal sections on the same timeline</span>
+              </div>
+              <div class="audition-sequence" aria-label="Alternating audition sequence">
+                <button class="sequence-part" data-sequence-index="0" type="button"><span>01</span> BIAS-X</button>
+                <button class="sequence-part" data-sequence-index="1" type="button"><span>02</span> Model</button>
+                <button class="sequence-part" data-sequence-index="2" type="button"><span>03</span> BIAS-X</button>
+                <button class="sequence-part" data-sequence-index="3" type="button"><span>04</span> Model</button>
+              </div>
+
+              <div class="audio-grid">
+                <article class="audio-card">
+                  <div class="audio-card-heading"><div><span class="audio-index">01</span><h4>Dry input</h4></div></div>
+                  <audio id="dry-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <a id="dry-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
+                </article>
+                <article class="audio-card audio-card-reference">
+                  <div class="audio-card-heading"><div><span class="audio-index">02</span><h4>BIAS-X reference</h4></div></div>
+                  <audio id="reference-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <a id="reference-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
+                </article>
+                <article class="audio-card audio-card-candidate">
+                  <div class="audio-card-heading"><div><span class="audio-index">03</span><h4>Model wet</h4></div></div>
+                  <audio id="candidate-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <p id="candidate-missing" class="audio-missing" hidden>Candidate audio has not been uploaded yet.</p>
+                  <a id="candidate-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
+                </article>
+                <article class="audio-card audio-card-nam">
+                  <div class="audio-card-heading"><div><span class="audio-index">04</span><h4>NAM A2 wet</h4></div></div>
+                  <audio id="nam-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <p id="nam-missing" class="audio-missing" hidden>NAM baseline audio is unavailable.</p>
+                  <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
+                </article>
+              </div>
+            </section>
+
+            <section class="aggregate-panel panel" aria-labelledby="aggregate-title">
+              <div>
+                <p class="lab-block-label">Run overview</p>
+                <h3 id="aggregate-title">Aggregate measurements</h3>
+              </div>
+              <dl id="run-summary" class="run-summary" aria-label="Aggregate run statistics"></dl>
+            </section>
+          </section>
+        </div>
       </div>
     </main>
 

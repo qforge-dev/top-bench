@@ -183,7 +183,11 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert f'data-case-id="{last_id}"' in direct_page.text
         assert "case-detail-model" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
-        assert "/static/case_detail.js?v=20260821-compact-nam" in direct_page.text
+        assert "/static/case_detail.js?v=20260822-audio-lab" in direct_page.text
+        assert 'class="lab-layout"' in direct_page.text
+        assert 'class="lab-sidebar"' in direct_page.text
+        assert 'id="play-sequence"' in direct_page.text
+        assert 'class="audition-sequence"' in direct_page.text
         assert 'id="nam-audio"' in direct_page.text
         assert 'class="breadcrumb"' not in direct_page.text
         assert "Listen side by side" not in direct_page.text

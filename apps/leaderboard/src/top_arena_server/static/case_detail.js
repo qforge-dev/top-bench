@@ -22,6 +22,7 @@
     chartPanel: document.querySelector("#chart-panel"),
     chartSummary: document.querySelector("#chart-summary"),
     content: document.querySelector("#detail-content"),
+    comparisonModel: document.querySelector("#comparison-model"),
     dryAudio: document.querySelector("#dry-audio"),
     dryDownload: document.querySelector("#dry-download"),
     empty: document.querySelector("#detail-empty"),
@@ -34,6 +35,7 @@
     next: document.querySelector("#next-case"),
     positions: document.querySelector("#position-chips"),
     previous: document.querySelector("#previous-case"),
+    playSequence: document.querySelector("#play-sequence"),
     referenceAudio: document.querySelector("#reference-audio"),
     referenceDownload: document.querySelector("#reference-download"),
     retry: document.querySelector("#retry-detail"),
@@ -43,6 +45,8 @@
     runName: document.querySelector("#run-name"),
     runStatus: document.querySelector("#run-status"),
     runSummary: document.querySelector("#run-summary"),
+    sequenceParts: [...document.querySelectorAll(".sequence-part[data-sequence-index]")],
+    sequenceStatus: document.querySelector("#sequence-status"),
     tabs: [...document.querySelectorAll('[role="tab"][data-metric]')],
   };
 
@@ -54,6 +58,9 @@
     refreshTimer: null,
     requestSerial: 0,
     runId: root.dataset.runId || "",
+    sequenceActive: false,
+    sequenceIndex: -1,
+    sequenceTimer: null,
   };
 
   function finite(value) {
@@ -127,6 +134,7 @@
   function renderRun(run) {
     if (!run || typeof run !== "object") return;
     setText(elements.runName, run.name || "Untitled model");
+    setText(elements.comparisonModel, run.name || "model");
     setText(elements.runCreator, run.creator || "Anonymous");
     setText(elements.runDescription, run.description || "No model description was supplied.");
     setText(elements.runAmp, run.amp_name || run.amp_id || "Unknown amp");
@@ -300,6 +308,81 @@
     setAudio(elements.namAudio, elements.namDownload, audio.nam, true);
     if (elements.candidateMissing) elements.candidateMissing.hidden = Boolean(audio.candidate);
     if (elements.namMissing) elements.namMissing.hidden = Boolean(audio.nam);
+  }
+
+  function clearSequenceTimer() {
+    if (state.sequenceTimer !== null) {
+      window.clearTimeout(state.sequenceTimer);
+      state.sequenceTimer = null;
+    }
+  }
+
+  function setSequenceButton(playing) {
+    if (!elements.playSequence) return;
+    elements.playSequence.textContent = playing ? "Stop sequence" : "Play sequence";
+    elements.playSequence.setAttribute("aria-pressed", playing ? "true" : "false");
+  }
+
+  function stopSequence(status = "Ready") {
+    clearSequenceTimer();
+    state.sequenceActive = false;
+    state.sequenceIndex = -1;
+    for (const audio of [elements.referenceAudio, elements.candidateAudio]) {
+      if (audio && !audio.paused && typeof audio.pause === "function") audio.pause();
+    }
+    for (const part of elements.sequenceParts) {
+      part.classList.remove("is-active");
+      part.removeAttribute("aria-current");
+    }
+    setSequenceButton(false);
+    setText(elements.sequenceStatus, status);
+  }
+
+  function playSequenceStep(index) {
+    if (!state.sequenceActive || index < 0 || index >= elements.sequenceParts.length) {
+      stopSequence(index >= elements.sequenceParts.length ? "Sequence complete" : "Ready");
+      return;
+    }
+    clearSequenceTimer();
+    const referenceStep = index % 2 === 0;
+    const audio = referenceStep ? elements.referenceAudio : elements.candidateAudio;
+    const label = referenceStep ? "BIAS-X" : "Model";
+    const duration = Math.max((finite(state.detail?.duration_seconds) ?? 4) / elements.sequenceParts.length, 0.1);
+    if (!audio?.getAttribute("src")) {
+      stopSequence(`${label} audio is unavailable`);
+      return;
+    }
+    for (const candidate of [elements.referenceAudio, elements.candidateAudio]) {
+      if (candidate && candidate !== audio && !candidate.paused && typeof candidate.pause === "function") candidate.pause();
+    }
+    state.sequenceIndex = index;
+    elements.sequenceParts.forEach((part, partIndex) => {
+      const active = partIndex === index;
+      part.classList.toggle("is-active", active);
+      if (active) part.setAttribute("aria-current", "true");
+      else part.removeAttribute("aria-current");
+    });
+    try {
+      audio.currentTime = duration * index;
+    } catch {
+      // Some browsers only allow seeking once media metadata is available.
+    }
+    setText(elements.sequenceStatus, `${index + 1} / ${elements.sequenceParts.length} · ${label}`);
+    const playback = audio.play();
+    if (playback && typeof playback.catch === "function") {
+      playback.catch(() => stopSequence("Playback could not start"));
+    }
+    state.sequenceTimer = window.setTimeout(() => {
+      if (!state.sequenceActive) return;
+      playSequenceStep(index + 1);
+    }, duration * 1_000);
+  }
+
+  function startSequence(index = 0) {
+    stopSequence();
+    state.sequenceActive = true;
+    setSequenceButton(true);
+    playSequenceStep(index);
   }
 
   function analysisPoints(detail, source = "bias") {
@@ -588,6 +671,7 @@
   }
 
   function renderDetail(detail) {
+    stopSequence();
     state.detail = detail;
     state.currentCaseId = String(detail.case_id);
     root.dataset.caseId = state.currentCaseId;
@@ -691,12 +775,20 @@
 
   function navigateTo(caseId) {
     if (!caseId || caseId === state.currentCaseId) return;
+    stopSequence();
     void loadCase(caseId, { historyMode: "push" });
   }
 
   elements.previous?.addEventListener("click", () => navigateTo(elements.previous?.dataset.caseId));
   elements.next?.addEventListener("click", () => navigateTo(elements.next?.dataset.caseId));
   elements.caseSelect?.addEventListener("change", () => navigateTo(elements.caseSelect?.value));
+  elements.playSequence?.addEventListener("click", () => {
+    if (state.sequenceActive) stopSequence();
+    else startSequence();
+  });
+  for (const part of elements.sequenceParts) {
+    part.addEventListener("click", () => startSequence(Number(part.dataset.sequenceIndex) || 0));
+  }
   elements.retry?.addEventListener("click", () => {
     if (state.cases.length > 0 && state.currentCaseId) void loadCase(state.currentCaseId, { historyMode: "none" });
     else void boot();
@@ -729,6 +821,9 @@
     }
   });
 
-  window.addEventListener("pagehide", clearRefresh);
+  window.addEventListener("pagehide", () => {
+    clearRefresh();
+    stopSequence();
+  });
   void boot();
 })();

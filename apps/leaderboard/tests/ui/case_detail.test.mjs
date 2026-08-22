@@ -132,6 +132,14 @@ function markup() {
         <audio id="reference-audio" preload="none"></audio><a id="reference-download"></a>
         <audio id="candidate-audio" preload="none"></audio><a id="candidate-download"></a><p id="candidate-missing" hidden></p>
         <audio id="nam-audio" preload="none"></audio><a id="nam-download"></a><p id="nam-missing" hidden></p>
+        <button id="play-sequence" type="button">Play sequence</button>
+        <span id="sequence-status" role="status">Ready</span>
+        <div class="audition-sequence">
+          <button class="sequence-part" data-sequence-index="0" type="button">01 BIAS-X</button>
+          <button class="sequence-part" data-sequence-index="1" type="button">02 Model</button>
+          <button class="sequence-part" data-sequence-index="2" type="button">03 BIAS-X</button>
+          <button class="sequence-part" data-sequence-index="3" type="button">04 Model</button>
+        </div>
         <div role="tablist">
           <button id="tab-esr" role="tab" data-metric="esr" aria-selected="true" tabindex="0">ESR</button>
           <button id="tab-level" role="tab" data-metric="level_db" aria-selected="false" tabindex="-1">Level dB</button>
@@ -170,7 +178,20 @@ async function setup({
   });
   const { window } = dom;
   const requests = [];
+  const mediaPlays = [];
   const timers = [];
+  Object.defineProperty(window.HTMLMediaElement.prototype, "paused", {
+    configurable: true,
+    get() { return this.dataset.playing !== "true"; },
+  });
+  window.HTMLMediaElement.prototype.play = function play() {
+    this.dataset.playing = "true";
+    mediaPlays.push({ id: this.id, currentTime: this.currentTime });
+    return Promise.resolve();
+  };
+  window.HTMLMediaElement.prototype.pause = function pause() {
+    this.dataset.playing = "false";
+  };
   if (captureTimers) {
     window.setTimeout = (callback, delay) => {
       timers.push({ callback, cancelled: false, delay });
@@ -205,7 +226,7 @@ async function setup({
   const script = await readFile(SCRIPT_URL, "utf8");
   window.eval(script);
   await waitFor(() => assert.equal(window.document.querySelector("#detail-content").hidden, false));
-  return { requests, timers, window };
+  return { mediaPlays, requests, timers, window };
 }
 
 test("deep link loads one case lazily and renders its summary, graph, and audio", async () => {
@@ -250,6 +271,29 @@ test("large ESR ranges use a readable logarithmic scale", async () => {
   assert.equal(window.document.querySelector("#case-chart .chart-title").textContent, "ESR (log scale)");
   assert.equal(labels[0], "0.0000");
   assert.match(labels.at(-1), /M$/);
+});
+
+test("play sequence alternates synchronized BIAS-X and model sections", async () => {
+  const { mediaPlays, timers, window } = await setup({ captureTimers: true });
+  const document = window.document;
+
+  document.querySelector("#play-sequence").click();
+  await waitFor(() => assert.equal(mediaPlays.length, 1));
+  assert.deepEqual(mediaPlays[0], { id: "reference-audio", currentTime: 0 });
+  assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
+  assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 4.*BIAS-X/);
+  assert.equal(document.querySelector("#play-sequence").textContent, "Stop sequence");
+
+  assert.equal(timers[0].delay, 1_250);
+  timers[0].callback();
+  await waitFor(() => assert.equal(mediaPlays.length, 2));
+  assert.deepEqual(mediaPlays[1], { id: "candidate-audio", currentTime: 1.25 });
+  assert.equal(document.querySelector('[data-sequence-index="1"]').getAttribute("aria-current"), "true");
+
+  document.querySelector("#next-case").click();
+  await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
+  assert.equal(document.querySelector("#play-sequence").textContent, "Play sequence");
+  assert.equal(document.querySelector("#sequence-status").textContent, "Ready");
 });
 
 test("arrows and select update the canonical URL and replace all case media", async () => {
