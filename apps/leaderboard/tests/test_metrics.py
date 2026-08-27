@@ -191,7 +191,7 @@ def test_realtime_summary_treats_more_realtime_x_as_better() -> None:
     metrics = aggregate_metrics(rows)
     assert metrics["contract"]["version"] == "top-arena-audio-v3"
     assert metrics["contract"]["comparisons"]["nam_a2_full"] == (
-        "NAM A2 Full baseline vs latency-aligned BIAS X reference"
+        "NAM-A2-FULL baseline vs latency-aligned BIAS X reference"
     )
     assert metrics["contract"]["analysis"] == {
         "version": "top-arena-case-analysis-v1",

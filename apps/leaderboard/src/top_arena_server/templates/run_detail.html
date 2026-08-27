@@ -8,9 +8,9 @@
     {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
-    <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260822-seamless-audition">
-    <script defer src="/static/case_detail.js?v=20260822-seamless-audition"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260826-nam-full-aggregates">
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260826-nam-full-aggregates">
+    <script defer src="/static/case_detail.js?v=20260826-nam-full-aggregates"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -137,10 +137,10 @@
               <div class="audition-sequence" aria-label="Continuous source-switching audition sequence">
                 <button class="sequence-part" data-sequence-index="0" data-sequence-source="reference" type="button"><span>01</span> BIAS-X</button>
                 <button class="sequence-part" data-sequence-index="1" data-sequence-source="model" type="button"><span>02</span> Model</button>
-                <button class="sequence-part" data-sequence-index="2" data-sequence-source="nam" type="button"><span>03</span> NAM A2</button>
+                <button class="sequence-part" data-sequence-index="2" data-sequence-source="nam" type="button"><span>03</span> NAM-A2-FULL</button>
                 <button class="sequence-part" data-sequence-index="3" data-sequence-source="reference" type="button"><span>04</span> BIAS-X</button>
                 <button class="sequence-part" data-sequence-index="4" data-sequence-source="model" type="button"><span>05</span> Model</button>
-                <button class="sequence-part" data-sequence-index="5" data-sequence-source="nam" type="button"><span>06</span> NAM A2</button>
+                <button class="sequence-part" data-sequence-index="5" data-sequence-source="nam" type="button"><span>06</span> NAM-A2-FULL</button>
               </div>
 
               <div class="audio-grid">
@@ -161,9 +161,9 @@
                   <a id="candidate-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
                 </article>
                 <article class="audio-card audio-card-nam">
-                  <div class="audio-card-heading"><div><span class="audio-index">04</span><h4>NAM A2 wet</h4></div></div>
+                  <div class="audio-card-heading"><div><span class="audio-index">04</span><h4>NAM-A2-FULL wet</h4></div></div>
                   <audio id="nam-audio" controls preload="none">Your browser does not support audio playback.</audio>
-                  <p id="nam-missing" class="audio-missing" hidden>NAM baseline audio is unavailable.</p>
+                  <p id="nam-missing" class="audio-missing" hidden>NAM-A2-FULL baseline audio is unavailable.</p>
                   <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
                 </article>
               </div>
@@ -196,7 +196,20 @@
                 <p class="lab-block-label">Run overview</p>
                 <h3 id="aggregate-title">Aggregate measurements</h3>
               </div>
-              <dl id="run-summary" class="run-summary" aria-label="Aggregate run statistics"></dl>
+              <div class="aggregate-content">
+                <section class="aggregate-group" aria-labelledby="model-aggregate-title">
+                  <h4 id="model-aggregate-title">Model aggregate</h4>
+                  <dl id="run-summary" class="run-summary" aria-label="Model aggregate statistics"></dl>
+                </section>
+                <section class="aggregate-group" aria-labelledby="nam-aggregate-title">
+                  <h4 id="nam-aggregate-title">NAM-A2-FULL aggregate</h4>
+                  <dl id="nam-run-summary" class="run-summary" aria-label="NAM-A2-FULL aggregate statistics"></dl>
+                </section>
+                <section class="aggregate-group aggregate-comparison-group" aria-labelledby="aggregate-comparison-title">
+                  <h4 id="aggregate-comparison-title">Model vs NAM-A2-FULL</h4>
+                  <dl id="aggregate-comparison" class="run-summary aggregate-comparison" aria-label="Model versus NAM-A2-FULL aggregate comparison"></dl>
+                </section>
+              </div>
             </section>
           </section>
         </div>

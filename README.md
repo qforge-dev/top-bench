@@ -8,9 +8,10 @@ Top Bench is an open audio-model benchmark with two parts:
 
 The live leaderboard is [top-arena.54-90-214-165.sslip.io](https://top-arena.54-90-214-165.sslip.io/).
 
-The starter dataset is Blackface 63: ten frame-aligned five-second dry excerpts at five
-static control positions, for 50 benchmark cases. Dry audio, reference wet audio, and
-submitted wet audio live in S3. PostgreSQL stores manifests, run state, per-case scores,
+The benchmark dataset covers 48 guitar amps. Each amp uses 15 complete, diverse
+16-beat dry DI loops at ten static control positions, for 150 cases per amp and 7,200
+reference cases overall. Dry audio, reference wet audio, and submitted wet audio live
+in S3 as lossless PCM-24 FLAC. PostgreSQL stores manifests, run state, per-case scores,
 aggregates, and the append-only progress event log.
 
 ## Run a model
@@ -84,7 +85,7 @@ minimization Pareto frontier for mean ESR versus unique positions used.
 
 Each leaderboard model links to a lazy-loaded run inspector. Its canonical URL is
 `/runs/{run_id}/cases/{case_id}`, so the selected benchmark case survives copied links
-and browser navigation. The inspector loads only a lightweight 50-case index and the
+and browser navigation. The inspector loads only a lightweight 150-case index and the
 currently selected case; dry, reference-wet, and candidate-wet audio stay unloaded until
 playback starts.
 

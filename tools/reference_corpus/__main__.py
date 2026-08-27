@@ -8,8 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .audio import prepare_dry
-from .config import CorpusConfig
+from .audio import prepare_dry, prepare_loop_dry
+from .config import DEFAULT_LOOP_SELECTION, DEFAULT_LOOP_SOURCE, CorpusConfig
 from .query import query_candidates
 from .render import generate_benchmark_manifest, render
 from .settings import generate_settings
@@ -27,6 +27,11 @@ def _parser() -> argparse.ArgumentParser:
     prepare = subparsers.add_parser("prepare-dry")
     prepare.add_argument("--candidates", type=Path, required=True)
     prepare.add_argument("--no-upload", action="store_true")
+
+    loops = subparsers.add_parser("prepare-loops")
+    loops.add_argument("--source", type=Path, default=DEFAULT_LOOP_SOURCE)
+    loops.add_argument("--selection", default=",".join(DEFAULT_LOOP_SELECTION))
+    loops.add_argument("--no-upload", action="store_true")
 
     positions = subparsers.add_parser("generate-settings")
     positions.add_argument("--no-upload", action="store_true")
@@ -62,6 +67,17 @@ def main() -> None:
         query_candidates(destination)
     elif arguments.command == "prepare-dry":
         path = prepare_dry(config, arguments.candidates, upload=not arguments.no_upload)
+        LOGGER.info("dry manifest: %s", path)
+    elif arguments.command == "prepare-loops":
+        selection = tuple(
+            value.strip() for value in arguments.selection.split(",") if value.strip()
+        )
+        path = prepare_loop_dry(
+            config,
+            arguments.source.expanduser().resolve(),
+            selection,
+            upload=not arguments.no_upload,
+        )
         LOGGER.info("dry manifest: %s", path)
     elif arguments.command == "generate-settings":
         path = generate_settings(config, upload=not arguments.no_upload)

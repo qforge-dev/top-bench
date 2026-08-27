@@ -325,7 +325,7 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             "human_weighting": "A-weighted spectral ESR",
             "comparisons": {
                 "bias_x": "candidate vs latency-aligned BIAS X reference",
-                "nam_a2_full": "NAM A2 Full baseline vs latency-aligned BIAS X reference",
+                "nam_a2_full": "NAM-A2-FULL baseline vs latency-aligned BIAS X reference",
             },
             "mrstft": [
                 {"fft": 512, "hop": 50, "window": 240},

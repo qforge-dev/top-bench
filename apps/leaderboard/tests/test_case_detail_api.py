@@ -183,7 +183,7 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert f'data-case-id="{last_id}"' in direct_page.text
         assert "case-detail-model" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
-        assert "/static/case_detail.js?v=20260822-seamless-audition" in direct_page.text
+        assert "/static/case_detail.js?v=20260826-nam-full-aggregates" in direct_page.text
         assert 'class="lab-layout"' in direct_page.text
         assert 'class="lab-sidebar"' in direct_page.text
         assert 'id="play-sequence"' in direct_page.text
@@ -247,7 +247,16 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         waveform_response.raise_for_status()
         waveform = waveform_response.json()
         assert waveform["duration_seconds"] == 0.1
-        assert [series["key"] for series in waveform["series"]] == ["dry", "nam", "model"]
+        assert [series["key"] for series in waveform["series"]] == [
+            "reference",
+            "nam",
+            "model",
+        ]
+        assert [series["label"] for series in waveform["series"]] == [
+            "BIAS X wet",
+            "NAM-A2-FULL",
+            "Model",
+        ]
         assert all(len(series["values"]) == 720 for series in waveform["series"])
         assert all(
             0.0 <= value <= 1.0 for series in waveform["series"] for value in series["values"]

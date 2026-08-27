@@ -830,6 +830,32 @@ progress::-moz-progress-bar {
   font-size: 0.92rem;
 }
 
+.metric-baseline,
+.metric-comparison {
+  display: block;
+  margin-top: 3px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.54rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.metric-baseline {
+  color: var(--amber);
+}
+
+.metric-comparison {
+  color: var(--text-muted);
+}
+
+.metric-comparison.is-model-better {
+  color: #8bd450;
+}
+
+.metric-comparison.is-baseline-better {
+  color: #ffb454;
+}
+
 .metric-details {
   display: grid;
   margin: 9px 0 0;

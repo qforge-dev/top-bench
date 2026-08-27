@@ -7,10 +7,10 @@
   const SEQUENCE_SOURCES = [
     { label: "BIAS-X" },
     { label: "Model" },
-    { label: "NAM A2" },
+    { label: "NAM-A2-FULL" },
     { label: "BIAS-X" },
     { label: "Model" },
-    { label: "NAM A2" },
+    { label: "NAM-A2-FULL" },
   ];
 
   const root = document.querySelector("#run-detail");
@@ -46,6 +46,7 @@
     namAudio: document.querySelector("#nam-audio"),
     namDownload: document.querySelector("#nam-download"),
     namMissing: document.querySelector("#nam-missing"),
+    namRunSummary: document.querySelector("#nam-run-summary"),
     next: document.querySelector("#next-case"),
     positions: document.querySelector("#position-chips"),
     previous: document.querySelector("#previous-case"),
@@ -59,6 +60,7 @@
     runName: document.querySelector("#run-name"),
     runStatus: document.querySelector("#run-status"),
     runSummary: document.querySelector("#run-summary"),
+    aggregateComparison: document.querySelector("#aggregate-comparison"),
     sequenceParts: [...document.querySelectorAll(".sequence-part[data-sequence-index]")],
     sequenceStatus: document.querySelector("#sequence-status"),
     tabs: [...document.querySelectorAll('[role="tab"][data-metric]')],
@@ -144,6 +146,27 @@
     return finite(metric);
   }
 
+  function namMetricMean(run, name) {
+    const metric = run?.metrics?.nam_a2_full?.[name];
+    if (metric && typeof metric === "object") return finite(metric.mean);
+    return finite(metric);
+  }
+
+  function comparisonLabel(modelValue, baselineValue, higherIsBetter = false) {
+    if (modelValue === null || baselineValue === null) return { label: "Unavailable", className: "" };
+    if (modelValue === baselineValue) return { label: "Equal", className: "is-equal" };
+    const modelBetter = higherIsBetter ? modelValue > baselineValue : modelValue < baselineValue;
+    const subject = modelBetter ? "Model" : "NAM-A2-FULL";
+    const better = modelBetter ? modelValue : baselineValue;
+    const worse = modelBetter ? baselineValue : modelValue;
+    const percentage = worse === 0 ? null : (Math.abs(worse - better) / Math.abs(worse)) * 100;
+    const direction = higherIsBetter ? "higher" : "lower";
+    return {
+      label: percentage === null ? `${subject} better` : `${subject} ${percentage.toFixed(1)}% ${direction}`,
+      className: modelBetter ? "is-model-better" : "is-baseline-better",
+    };
+  }
+
   function addDefinitionListItem(list, label, value, hint = "", valueClass = "") {
     if (!list) return;
     const wrapper = createElement("div");
@@ -194,6 +217,30 @@
     const completed = finite(run.completed_cases) ?? 0;
     const total = finite(run.total_cases) ?? 0;
     addDefinitionListItem(elements.runSummary, "Cases", `${formatCompact(completed)} / ${formatCompact(total)}`, titleCase(status));
+
+    elements.namRunSummary?.replaceChildren();
+    addDefinitionListItem(elements.namRunSummary, "NAM-A2-FULL mean ESR", formatNumber(namMetricMean(run, "esr")), "lower is better");
+    addDefinitionListItem(elements.namRunSummary, "Mean weighted ESR", formatNumber(namMetricMean(run, "human_weighted_esr")), "lower is better");
+    addDefinitionListItem(elements.namRunSummary, "Mean MRSTFT", formatNumber(namMetricMean(run, "mrstft")), "lower is better");
+    const namLevel = namMetricMean(run, "level_db");
+    addDefinitionListItem(elements.namRunSummary, "Mean level Δ", namLevel === null ? "—" : `${formatNumber(namLevel, 2)} dB`, "absolute difference");
+    const namPeak = namMetricMean(run, "peak_db");
+    addDefinitionListItem(elements.namRunSummary, "Mean peak Δ", namPeak === null ? "—" : `${formatNumber(namPeak, 2)} dB`, "absolute difference");
+    addDefinitionListItem(elements.namRunSummary, "Mean correlation", formatNumber(namMetricMean(run, "correlation")), "higher is better");
+    addDefinitionListItem(elements.namRunSummary, "Available cases", formatCompact(run?.metrics?.nam_a2_full?.available_cases), "NAM-A2-FULL baseline");
+
+    elements.aggregateComparison?.replaceChildren();
+    for (const [label, name, higherIsBetter] of [
+      ["ESR", "esr", false],
+      ["Weighted ESR", "human_weighted_esr", false],
+      ["MRSTFT", "mrstft", false],
+      ["Level Δ", "level_db", false],
+      ["Peak Δ", "peak_db", false],
+      ["Correlation", "correlation", true],
+    ]) {
+      const comparison = comparisonLabel(metricMean(run, name), namMetricMean(run, name), higherIsBetter);
+      addDefinitionListItem(elements.aggregateComparison, label, comparison.label, "vs NAM-A2-FULL", comparison.className);
+    }
   }
 
   function closeDeleteDialog() {
@@ -522,7 +569,7 @@
     state.sequenceActive = true;
     const generation = state.sequenceGeneration;
     setSequenceButton(true);
-    setText(elements.sequenceStatus, "Preloading full Reference, Model, and NAM A2 clips…");
+    setText(elements.sequenceStatus, "Preloading full Reference, Model, and NAM-A2-FULL clips…");
     const context = getSequenceContext();
     if (!context) {
       stopSequence("This browser does not support seamless audio switching");
@@ -552,7 +599,7 @@
       description: "Correlation over time · higher is better",
       fields: [
         { key: "correlation", label: "Reference vs Model", tone: "model" },
-        { key: "correlation", label: "Reference vs NAM A2", source: "nam", tone: "nam" },
+        { key: "correlation", label: "Reference vs NAM-A2-FULL", source: "nam", tone: "nam" },
       ],
       fixedDomain: [-1, 1],
     },
@@ -561,7 +608,7 @@
       description: "Error-to-signal ratio over time · logarithmic scale · lower is better",
       fields: [
         { key: "esr", label: "Reference vs Model", tone: "model" },
-        { key: "esr", label: "Reference vs NAM A2", source: "nam", tone: "nam" },
+        { key: "esr", label: "Reference vs NAM-A2-FULL", source: "nam", tone: "nam" },
       ],
       scale: "log",
       zeroBaseline: true,
@@ -572,7 +619,7 @@
       fields: [
         { key: "reference_level_db", label: "Reference (BIAS-X)", tone: "reference" },
         { key: "candidate_level_db", label: "Model", tone: "model" },
-        { key: "candidate_level_db", label: "NAM A2", source: "nam", tone: "nam" },
+        { key: "candidate_level_db", label: "NAM-A2-FULL", source: "nam", tone: "nam" },
       ],
     },
     peak_db: {
@@ -581,12 +628,12 @@
       fields: [
         { key: "reference_peak_db", label: "Reference (BIAS-X)", tone: "reference" },
         { key: "candidate_peak_db", label: "Model", tone: "model" },
-        { key: "candidate_peak_db", label: "NAM A2", source: "nam", tone: "nam" },
+        { key: "candidate_peak_db", label: "NAM-A2-FULL", source: "nam", tone: "nam" },
       ],
     },
   };
 
-  const WAVEFORM_TONES = new Set(["dry", "nam", "model"]);
+  const WAVEFORM_TONES = new Set(["reference", "nam", "model"]);
 
   function renderWaveform(payload) {
     const chart = elements.waveformChart;
@@ -635,7 +682,7 @@
     chart.append(grid);
 
     for (const item of series) {
-      const tone = WAVEFORM_TONES.has(item.key) ? item.key : "dry";
+      const tone = WAVEFORM_TONES.has(item.key) ? item.key : "reference";
       const values = item.values.map((value) => Math.max(0, finite(value) ?? 0));
       const top = values.map((value, index) => ({
         x: margin.left + (index / Math.max(values.length - 1, 1)) * innerWidth,

@@ -152,7 +152,7 @@ class RunCaseAudioResponse(ApiModel):
 
 
 class WaveformSeriesResponse(ApiModel):
-    key: Literal["dry", "nam", "model"]
+    key: Literal["reference", "nam", "model"]
     label: str
     values: list[float]
 

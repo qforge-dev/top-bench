@@ -32,6 +32,15 @@ function detail(caseId, index) {
         correlation: { mean: 0.94 },
         mrstft: { mean: 0.112 },
         realtime_x: { mean: 18.4 },
+        nam_a2_full: {
+          available_cases: 2,
+          esr: { mean: 0.062 },
+          human_weighted_esr: { mean: 0.054 },
+          level_db: { mean: 0.75 },
+          peak_db: { mean: 0.5 },
+          correlation: { mean: 0.9 },
+          mrstft: { mean: 0.14 },
+        },
       },
     },
     case_id: caseId,
@@ -129,7 +138,7 @@ function markup() {
           <button id="cancel-delete-run" type="button">Cancel</button>
           <button id="confirm-delete-run" type="button">Delete result</button>
         </div>
-        <div id="run-summary"></div>
+        <div id="run-summary"></div><div id="nam-run-summary"></div><div id="aggregate-comparison"></div>
         <button id="previous-case" type="button">Previous</button>
         <select id="case-select"></select><span id="case-position"></span>
         <button id="next-case" type="button">Next</button>
@@ -144,10 +153,10 @@ function markup() {
         <div class="audition-sequence">
           <button class="sequence-part" data-sequence-index="0" type="button">01 BIAS-X</button>
           <button class="sequence-part" data-sequence-index="1" type="button">02 Model</button>
-          <button class="sequence-part" data-sequence-index="2" type="button">03 NAM A2</button>
+          <button class="sequence-part" data-sequence-index="2" type="button">03 NAM-A2-FULL</button>
           <button class="sequence-part" data-sequence-index="3" type="button">04 BIAS-X</button>
           <button class="sequence-part" data-sequence-index="4" type="button">05 Model</button>
-          <button class="sequence-part" data-sequence-index="5" type="button">06 NAM A2</button>
+          <button class="sequence-part" data-sequence-index="5" type="button">06 NAM-A2-FULL</button>
         </div>
         <p id="waveform-status"></p><div id="waveform-legend"></div>
         <svg id="waveform-chart" viewBox="0 0 1000 360"></svg>
@@ -289,8 +298,8 @@ async function setup({
         ? {
             duration_seconds: 5,
             series: [
-              { key: "dry", label: "Dry", values: [0, 0.2, 0.5, 0.1, 0] },
-              { key: "nam", label: "NAM A2", values: [0, 0.3, 0.45, 0.12, 0] },
+              { key: "reference", label: "BIAS X wet", values: [0, 0.2, 0.5, 0.1, 0] },
+              { key: "nam", label: "NAM-A2-FULL", values: [0, 0.3, 0.45, 0.12, 0] },
               { key: "model", label: "Model", values: [0, 0.25, 0.48, 0.11, 0] },
             ],
           }
@@ -324,6 +333,10 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.match(document.querySelector("#run-summary").textContent, /Mean level Δ/);
   assert.match(document.querySelector("#run-summary").textContent, /Mean peak Δ/);
   assert.match(document.querySelector("#run-summary").textContent, /Mean correlation/);
+  assert.match(document.querySelector("#nam-run-summary").textContent, /NAM-A2-FULL mean ESR\s*0\.0620/);
+  assert.match(document.querySelector("#nam-run-summary").textContent, /Available cases\s*2/);
+  assert.match(document.querySelector("#aggregate-comparison").textContent, /ESR\s*Model 50\.0% lower/);
+  assert.match(document.querySelector("#aggregate-comparison").textContent, /Correlation\s*Model 4\.4% higher/);
   assert.equal(document.querySelector("#case-position").textContent, "1 / 2");
   assert.match(document.querySelector("#position-chips").textContent, /bass\s+0\.66/);
   assert.match(document.querySelector("#case-metrics").textContent, /Correlation/);
@@ -334,10 +347,12 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.equal(document.querySelector("#case-chart").dataset.metric, "esr");
   assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
   assert.match(document.querySelector("#case-chart-legend").textContent, /Reference vs Model/);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference vs NAM A2/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /Reference vs NAM-A2-FULL/);
   await waitFor(() => assert.equal(document.querySelectorAll("#waveform-chart .waveform-series").length, 3));
-  assert.match(document.querySelector("#waveform-legend").textContent, /Dry/);
-  assert.match(document.querySelector("#waveform-legend").textContent, /NAM A2/);
+  assert.match(document.querySelector("#waveform-legend").textContent, /BIAS X wet/);
+  assert.equal(document.querySelectorAll("#waveform-chart .tone-reference").length, 1);
+  assert.equal(document.querySelectorAll("#waveform-chart .tone-dry").length, 0);
+  assert.match(document.querySelector("#waveform-legend").textContent, /NAM-A2-FULL/);
   assert.match(document.querySelector("#waveform-legend").textContent, /Model/);
 
   document.querySelector("#tab-correlation").click();
@@ -388,7 +403,7 @@ test("play sequence switches sources across one continuous six-part timeline", a
   timers[1].callback();
   assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1);
   assert.equal(document.querySelector('[data-sequence-index="2"]').getAttribute("aria-current"), "true");
-  assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM A2/);
+  assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM-A2-FULL/);
 
   document.querySelector("#next-case").click();
   await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
@@ -437,7 +452,7 @@ test("history and keyboard-operated metric tabs restore the selected state", asy
   assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 3);
   assert.match(document.querySelector("#case-chart-legend").textContent, /BIAS-X/);
   assert.match(document.querySelector("#case-chart-legend").textContent, /Model/);
-  assert.match(document.querySelector("#case-chart-legend").textContent, /NAM A2/);
+  assert.match(document.querySelector("#case-chart-legend").textContent, /NAM-A2-FULL/);
 });
 
 test("a transient live-refresh failure keeps the populated inspector visible and retries", async () => {

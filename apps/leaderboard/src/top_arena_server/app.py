@@ -667,7 +667,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             row = (
                 await session.execute(
                     select(
-                        BenchmarkCase.dry_key,
+                        BenchmarkCase.reference_wet_key,
                         BenchmarkCase.nam_reference_wet_key,
                         RunCase.candidate_wet_key,
                         BenchmarkCase.duration_seconds,
@@ -682,9 +682,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).one_or_none()
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
-        sources: list[tuple[Literal["dry", "nam", "model"], str, str | None]] = [
-            ("dry", "Dry", row.dry_key),
-            ("nam", "NAM A2", row.nam_reference_wet_key),
+        sources: list[tuple[Literal["reference", "nam", "model"], str, str | None]] = [
+            ("reference", "BIAS X wet", row.reference_wet_key),
+            ("nam", "NAM-A2-FULL", row.nam_reference_wet_key),
             ("model", "Model", row.candidate_wet_key),
         ]
         available = [(key, label, object_key) for key, label, object_key in sources if object_key]

@@ -48,7 +48,7 @@ def _amp_spec(amp_id: str) -> AmpSpec:
                 duration_seconds=15.0,
                 sample_rate=48_000,
             )
-            for sound in range(5)
+            for sound in range(15)
             for position in range(10)
         ],
     )
@@ -116,7 +116,7 @@ async def test_activation_preserves_a_starter_run_and_is_idempotent(tmp_path: Pa
         assert run.amp_id == f"{amp_id}:starter-v1"
         assert old_case.amp_id == f"{amp_id}:starter-v1"
         assert production_amp.name == "Production Amp"
-        assert production_case_count == 50
+        assert production_case_count == 150
         production_case = await session.get(BenchmarkCase, f"v1-{amp_id}-sound-01-position-01")
         assert production_case is not None
         assert production_case.reference_latency_samples == 9

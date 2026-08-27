@@ -27,6 +27,8 @@ def render_directory(
     output_directory: Path,
     *,
     torch_threads: int,
+    output_gain: float = 1.0,
+    expected_count: int | None = None,
 ) -> Path:
     torch.set_num_threads(torch_threads)
     payload = json.loads(model_path.read_text())
@@ -45,7 +47,7 @@ def render_directory(
             raise ValueError(msg)
         with torch.inference_mode():
             prediction = model(torch.from_numpy(dry), pad_start=True).reshape(-1)
-        wet = prediction.detach().cpu().numpy().astype("float32")
+        wet = prediction.detach().cpu().numpy().astype("float32") * output_gain
         if wet.shape != dry.shape or not np.all(np.isfinite(wet)):
             msg = f"invalid NAM inference output: {input_path}"
             raise RuntimeError(msg)
@@ -67,8 +69,8 @@ def render_directory(
                 "rms_db": 20.0 * math.log10(max(rms, 1e-12)),
             }
         )
-    if len(results) != 50:
-        msg = f"expected 50 NAM renders, found {len(results)}"
+    if expected_count is not None and len(results) != expected_count:
+        msg = f"expected {expected_count} NAM renders, found {len(results)}"
         raise RuntimeError(msg)
     manifest = output_directory / "inference.json"
     manifest.write_text(
@@ -77,6 +79,7 @@ def render_directory(
                 "format": "top-arena.nam-a2-full-inference.v1",
                 "model": str(model_path),
                 "audio_format": "FLAC PCM_24",
+                "output_gain": output_gain,
                 "outputs": results,
             },
             indent=2,
@@ -93,12 +96,16 @@ def main() -> None:
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--torch-threads", type=int, default=max(1, (os.cpu_count() or 8) // 4))
+    parser.add_argument("--output-gain", type=float, default=1.0)
+    parser.add_argument("--expected-count", type=int)
     arguments = parser.parse_args()
     render_directory(
         arguments.model,
         arguments.input_dir,
         arguments.output_dir,
         torch_threads=arguments.torch_threads,
+        output_gain=arguments.output_gain,
+        expected_count=arguments.expected_count,
     )
 
 

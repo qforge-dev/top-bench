@@ -660,6 +660,15 @@
   vector-effect: non-scaling-stroke;
 }
 
+.waveform-legend i.tone-reference {
+  background: #68737d;
+}
+
+.waveform-series.tone-reference {
+  fill: rgb(104 115 125 / 8%);
+  stroke: #68737d;
+}
+
 .waveform-series.tone-nam {
   fill: rgb(255 189 92 / 7%);
   stroke: var(--amber);
@@ -1399,6 +1408,32 @@
   border-radius: 0;
   gap: 14px;
   grid-template-columns: 180px minmax(0, 1fr);
+}
+
+.aggregate-content {
+  display: grid;
+  min-width: 0;
+  gap: 15px;
+}
+
+.aggregate-group h4 {
+  margin: 0 0 6px;
+  color: #9ca7af;
+  font: 800 0.58rem ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aggregate-comparison dd.is-model-better {
+  color: #8bd450;
+}
+
+.aggregate-comparison dd.is-baseline-better {
+  color: var(--amber);
+}
+
+.aggregate-comparison dd.is-equal {
+  color: #9ca7af;
 }
 
 .sidebar-actions {

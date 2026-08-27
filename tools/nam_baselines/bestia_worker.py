@@ -90,6 +90,22 @@ MODEL_CONFIG: dict[str, Any] = {
     "lr_scheduler": {"class": "ExponentialLR", "kwargs": {"gamma": 0.99976}},
 }
 
+NAM_WET_PEAK_TARGET = 0.999
+
+
+def training_wet_scale(job: dict[str, Any]) -> float:
+    """Return a reversible gain that satisfies NAM's strict abs(y) < 1 guard."""
+    peak = float(job["wet_peak"])
+    clipped_samples = int(job.get("wet_clipped_samples", 0))
+    if clipped_samples == 0 and peak < 1.0:
+        return 1.0
+    if peak <= 0.0:
+        return 1.0
+    # The queued peak describes the floating-point render before its PCM_24
+    # FLAC encoding. The file consumed here is already bounded to full scale,
+    # so a fixed gain is sufficient and avoids unnecessary attenuation.
+    return NAM_WET_PEAK_TARGET
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -135,8 +151,8 @@ class S3:
         )
         return list(json.loads(result.stdout) or [])
 
-    def download(self, key: str, destination: Path) -> None:
-        if destination.exists():
+    def download(self, key: str, destination: Path, *, overwrite: bool = False) -> None:
+        if destination.exists() and not overwrite:
             return
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(destination.suffix + ".part")
@@ -272,6 +288,19 @@ class QueueStore:
                 for row in connection.execute("SELECT status, count(*) FROM jobs GROUP BY status")
             }
 
+    def retry_failed(self) -> int:
+        """Requeue terminal failures while retaining their attempt history."""
+        with closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status = 'pending', error = NULL, updated_at = ?
+                WHERE status = 'failed'
+                """,
+                (datetime.now(UTC).isoformat(),),
+            )
+            return cursor.rowcount
+
 
 class BestiaFactory:
     def __init__(
@@ -301,6 +330,7 @@ class BestiaFactory:
         self.poll_seconds = poll_seconds
         self.store = QueueStore(root / "state" / "queue.sqlite3")
         self.dry_lock = threading.Lock()
+        self.benchmark_cache: tuple[Path, int] | None = None
         self.ffmpeg = shutil.which("ffmpeg")
         if self.ffmpeg is None:
             msg = "ffmpeg is required"
@@ -378,24 +408,56 @@ class BestiaFactory:
                 continue
             self.store.add(key, job)
 
-    def _convert_to_float_wav(self, source: Path, destination: Path) -> None:
-        if destination.exists():
+    def _convert_to_float_wav(self, source: Path, destination: Path, *, gain: float = 1.0) -> None:
+        gain_marker = destination.with_suffix(destination.suffix + ".gain")
+        expected_marker = f"{gain:.17g}\n"
+        if destination.exists() and (
+            (gain == 1.0 and not gain_marker.exists())
+            or (gain_marker.exists() and gain_marker.read_text() == expected_marker)
+        ):
             return
+        temporary = destination.with_suffix(destination.suffix + ".part")
+        command = [
+            self.ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+        ]
+        if gain != 1.0:
+            command.extend(("-filter:a", f"volume={gain:.17g}"))
+        command.extend(("-c:a", "pcm_f32le", "-f", "wav", str(temporary)))
+        subprocess.run(command, check=True)  # noqa: S603
+        temporary.replace(destination)
+        gain_marker.write_text(expected_marker)
+
+    def _recover_final_checkpoint(self, directory: Path) -> Path | None:
+        expected_epoch = self.epochs - 1
+        candidates = sorted(
+            directory.glob(
+                f"out/*/lightning_logs/version_0/checkpoints/"
+                f"checkpoint_epoch_epoch={expected_epoch:04d}.ckpt"
+            )
+        )
+        if not candidates:
+            return None
+        model = directory / "model.nam"
         subprocess.run(  # noqa: S603
             [
-                self.ffmpeg,
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-i",
-                str(source),
-                "-c:a",
-                "pcm_f32le",
-                str(destination),
+                str(self.nam_python),
+                str(self.repo / "tools" / "nam_baselines" / "recover_checkpoint.py"),
+                "--checkpoint",
+                str(candidates[-1]),
+                "--model-config",
+                str(directory / "model_config.json"),
+                "--output",
+                str(model),
             ],
             check=True,
         )
+        return model
 
     def train(self, row: dict[str, Any], gpu: int) -> None:
         job = self._job_json(row)
@@ -412,8 +474,9 @@ class BestiaFactory:
         if sha256(dry_flac) != job["dry_sha256"] or sha256(wet_flac) != job["wet_sha256"]:
             msg = "training audio checksum mismatch"
             raise ValueError(msg)
+        wet_scale = training_wet_scale(job)
         self._convert_to_float_wav(dry_flac, directory / "dry.wav")
-        self._convert_to_float_wav(wet_flac, directory / "wet.wav")
+        self._convert_to_float_wav(wet_flac, directory / "wet.wav", gain=wet_scale)
         data_config = {
             "train": {"stop_seconds": job["train_stop_seconds"], "ny": 32768},
             "validation": {
@@ -446,29 +509,32 @@ class BestiaFactory:
         write_json(directory / "data_config.json", data_config)
         write_json(directory / "model_config.json", MODEL_CONFIG)
         write_json(directory / "learning_config.json", learning_config)
-        command = [
-            str(self.nam_bin),
-            str(directory / "data_config.json"),
-            str(directory / "model_config.json"),
-            str(directory / "learning_config.json"),
-            str(directory / "out"),
-        ]
-        environment = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+        model = self._recover_final_checkpoint(directory)
         log_path = directory / "train.log"
-        with log_path.open("w") as log:
-            subprocess.run(  # noqa: S603
-                command,
-                check=True,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                env=environment,
-            )
-        candidates = sorted(directory.glob("out/*/model.nam"))
-        if not candidates:
-            msg = "NAM trainer produced no model.nam"
-            raise RuntimeError(msg)
-        model = directory / "model.nam"
-        shutil.copy2(candidates[-1], model)
+        if model is None:
+            command = [
+                str(self.nam_bin),
+                str(directory / "data_config.json"),
+                str(directory / "model_config.json"),
+                str(directory / "learning_config.json"),
+                str(directory / "out"),
+                "--no-plots",
+            ]
+            environment = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+            with log_path.open("w") as log:
+                subprocess.run(  # noqa: S603
+                    command,
+                    check=True,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                )
+            candidates = sorted(directory.glob("out/*/model.nam"))
+            if not candidates:
+                msg = "NAM trainer produced no model.nam"
+                raise RuntimeError(msg)
+            model = directory / "model.nam"
+            shutil.copy2(candidates[-1], model)
         output_root = job["output_root"]
         for artifact in (
             "model.nam",
@@ -491,6 +557,8 @@ class BestiaFactory:
             "model_sha256": sha256(model),
             "dry_key": job["dry_key"],
             "wet_key": job["wet_key"],
+            "wet_training_scale": wet_scale,
+            "inference_output_gain": 1.0 / wet_scale,
             "latency_samples": job["latency_samples"],
             "completed_at": datetime.now(UTC).isoformat(),
         }
@@ -500,24 +568,37 @@ class BestiaFactory:
         self.store.transition(job["job_id"], "trained")
         LOGGER.info("trained %s on GPU %d", job["job_id"], gpu)
 
-    def _ensure_benchmark_dry(self, job: dict[str, Any]) -> Path:
-        directory = self.root / "cache" / "benchmark-dry"
+    def _ensure_benchmark_dry(self, job: dict[str, Any]) -> tuple[Path, int]:
         with self.dry_lock:
-            existing = list(directory.glob("sound-*.flac")) if directory.exists() else []
-            if len(existing) == 50:
-                return directory
+            if self.benchmark_cache is not None:
+                return self.benchmark_cache
+            corpus_prefix = str(job["benchmark_dry_prefix"]).removesuffix("/dry")
+            manifest_path = self.root / "cache" / "benchmark-dry.json"
+            self.s3.download(
+                f"{corpus_prefix}/manifests/dry.json",
+                manifest_path,
+                overwrite=True,
+            )
+            manifest = json.loads(manifest_path.read_text())
+            sounds = list(manifest["sounds"])
+            if len(sounds) != int(manifest["sound_count"]) or not sounds:
+                msg = "invalid benchmark dry manifest"
+                raise ValueError(msg)
+            manifest_digest = sha256(manifest_path)
+            directory = self.root / "cache" / "benchmark-dry" / manifest_digest
             directory.mkdir(parents=True, exist_ok=True)
-            keys = [
-                f"{job['benchmark_dry_prefix']}/sound-{index:02d}.flac" for index in range(1, 51)
-            ]
+
+            def download(sound: dict[str, Any]) -> None:
+                destination = directory / Path(str(sound["file"])).name
+                self.s3.download(f"{corpus_prefix}/{sound['file']}", destination)
+                if sha256(destination) != sound["sha256"]:
+                    msg = f"benchmark dry checksum mismatch: {destination}"
+                    raise ValueError(msg)
+
             with ThreadPoolExecutor(max_workers=8) as downloads:
-                list(
-                    downloads.map(
-                        lambda key: self.s3.download(key, directory / Path(key).name),
-                        keys,
-                    )
-                )
-        return directory
+                list(downloads.map(download, sounds))
+            self.benchmark_cache = (directory, len(sounds))
+            return self.benchmark_cache
 
     def infer(self, row: dict[str, Any]) -> None:
         job = self._job_json(row)
@@ -525,7 +606,7 @@ class BestiaFactory:
         model = directory / "model.nam"
         if not model.exists():
             self.s3.download(f"{job['output_root']}/training/model.nam", model)
-        inputs = self._ensure_benchmark_dry(job)
+        inputs, sound_count = self._ensure_benchmark_dry(job)
         outputs = directory / "inference"
         if outputs.exists():
             shutil.rmtree(outputs)
@@ -540,6 +621,10 @@ class BestiaFactory:
             str(outputs),
             "--torch-threads",
             "8",
+            "--output-gain",
+            f"{1.0 / training_wet_scale(job):.17g}",
+            "--expected-count",
+            str(sound_count),
         ]
         environment = {**os.environ, "CUDA_VISIBLE_DEVICES": ""}
         subprocess.run(command, check=True, env=environment)  # noqa: S603
@@ -577,6 +662,8 @@ class BestiaFactory:
             "model_sha256": sha256(model),
             "training_dry_key": job["dry_key"],
             "training_wet_key": job["wet_key"],
+            "wet_training_scale": training_wet_scale(job),
+            "inference_output_gain": 1.0 / training_wet_scale(job),
             "latency_samples": job["latency_samples"],
             "comparison_alignment": "shift BIAS reference left by latency_samples",
             "cases": cases,

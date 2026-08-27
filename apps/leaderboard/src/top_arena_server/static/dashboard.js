@@ -70,6 +70,8 @@
   function normalizeRun(raw, index) {
     const source = raw && typeof raw === "object" ? raw : {};
     const esr = metric(source, "esr");
+    const namMetrics = source.metrics?.nam_a2_full;
+    const namSource = { metrics: namMetrics && typeof namMetrics === "object" ? namMetrics : {} };
     return {
       id: text(firstValue(source.id, source.run_id, source.runId), `run-${index}`),
       name: text(firstValue(source.name, source.model_name, source.modelName), "Untitled model"),
@@ -90,6 +92,11 @@
       humanWeightedEsr: metric(source, "human_weighted_esr", "humanWeightedEsr"),
       mrstft: metric(source, "mrstft"),
       realtime: metric(source, "realtime_x", "realtimeX"),
+      namA2Full: {
+        esr: metric(namSource, "esr"),
+        humanWeightedEsr: metric(namSource, "human_weighted_esr", "humanWeightedEsr"),
+        mrstft: metric(namSource, "mrstft"),
+      },
       createdAt: text(firstValue(source.created_at, source.createdAt)),
     };
   }
@@ -200,10 +207,28 @@
     return cell;
   }
 
-  function metricCell(label, summary) {
+  function comparisonLabel(modelValue, baselineValue, higherIsBetter = false) {
+    if (modelValue === null || baselineValue === null) return { label: "Comparison unavailable", className: "" };
+    if (modelValue === baselineValue) return { label: "Equal", className: "is-equal" };
+    const modelBetter = higherIsBetter ? modelValue > baselineValue : modelValue < baselineValue;
+    const subject = modelBetter ? "Model" : "NAM-A2-FULL";
+    const better = modelBetter ? modelValue : baselineValue;
+    const worse = modelBetter ? baselineValue : modelValue;
+    const percentage = worse === 0 ? null : (Math.abs(worse - better) / Math.abs(worse)) * 100;
+    const direction = higherIsBetter ? "higher" : "lower";
+    return {
+      label: percentage === null ? `${subject} better` : `${subject} ${percentage.toFixed(1)}% ${direction}`,
+      className: modelBetter ? "is-model-better" : "is-baseline-better",
+    };
+  }
+
+  function metricCell(label, summary, baseline, higherIsBetter = false) {
     const cell = createElement("td", "numeric-cell");
     cell.dataset.label = label;
     cell.append(createElement("strong", `metric-primary${summary.mean === null ? " metric-empty" : ""}`, formatScore(summary.mean)));
+    cell.append(createElement("span", "metric-baseline", `NAM-A2-FULL ${formatScore(baseline.mean)}`));
+    const comparison = comparisonLabel(summary.mean, baseline.mean, higherIsBetter);
+    cell.append(createElement("span", `metric-comparison ${comparison.className}`, comparison.label));
     return cell;
   }
 
@@ -293,9 +318,9 @@
         progressCell(run),
         simpleCell("Positions", run.positions === null ? "—" : formatScore(run.positions), "numeric-cell"),
         simpleCell("Realtime", run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}×`, "numeric-cell"),
-        metricCell("ESR", run.esr),
-        metricCell("Human-weighted ESR", run.humanWeightedEsr),
-        metricCell("MRSTFT", run.mrstft),
+        metricCell("ESR", run.esr, run.namA2Full.esr),
+        metricCell("Human-weighted ESR", run.humanWeightedEsr, run.namA2Full.humanWeightedEsr),
+        metricCell("MRSTFT", run.mrstft, run.namA2Full.mrstft),
       );
       elements.body.append(row);
     }

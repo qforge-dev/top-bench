@@ -28,6 +28,12 @@ function run(id, name, ampId, ampName) {
       human_weighted_esr: { mean: 0.2 },
       mrstft: { mean: 0.3 },
       realtime_x: { mean: 10 },
+      nam_a2_full: {
+        available_cases: 50,
+        esr: { mean: 0.25 },
+        human_weighted_esr: { mean: 0.4 },
+        mrstft: { mean: 0.5 },
+      },
     },
   };
 }
@@ -93,6 +99,9 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.equal(selectedRow.querySelector("progress"), null);
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
+  const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
+  assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);
+  assert.match(esrCell.textContent, /Model 20\.0% lower/);
 });
 
 test("Pareto chart plots positions against ESR on a logarithmic scale", async () => {

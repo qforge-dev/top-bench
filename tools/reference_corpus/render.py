@@ -301,7 +301,10 @@ def generate_benchmark_manifest(config: CorpusConfig) -> Path:
         path,
         {
             "format": "top-arena.benchmark-cases.v1",
-            "selection": "first five dry sounds for each of ten positions",
+            "selection": (
+                f"all {config.benchmark_sounds_per_position} dry sounds "
+                f"for each of {config.position_count} positions"
+            ),
             "cases_per_amp": config.position_count * config.benchmark_sounds_per_position,
             "cases": cases,
         },

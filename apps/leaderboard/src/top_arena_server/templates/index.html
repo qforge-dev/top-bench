@@ -6,9 +6,11 @@
   {% endif %}
 {%- endmacro %}
 
-{% macro metric_summary(metric) -%}
+{% macro metric_summary(metric, baseline) -%}
   {% set values = metric|default({}, true) %}
+  {% set baseline_values = baseline|default({}, true) %}
   <strong class="metric-primary">{{ number(values.mean) }}</strong>
+  <span class="metric-baseline">NAM-A2-FULL {{ number(baseline_values.mean) }}</span>
 {%- endmacro %}
 
 {% set initial_runs = runs|default([], true) %}
@@ -24,8 +26,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css?v=20260821-compact">
-    <script defer src="/static/dashboard.js?v=20260822-log-esr"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260826-nam-full-aggregates">
+    <script defer src="/static/dashboard.js?v=20260826-nam-full-aggregates"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -152,6 +154,7 @@
             <tbody id="leaderboard-body">
               {% for run in initial_runs %}
                 {% set metrics = run.metrics|default({}, true) %}
+                {% set nam_metrics = metrics.nam_a2_full|default({}, true) %}
                 {% set realtime = metrics.realtime_x|default({}, true) %}
                 {% set completed = run.completed_cases|default(0, true)|int %}
                 {% set total = run.total_cases|default(run.case_count|default(0, true), true)|int %}
@@ -173,9 +176,9 @@
                   <td data-label="Realtime" class="numeric-cell">
                     {% if realtime.mean|default(none) is not none %}{{ number(realtime.mean, 2) }}×{% else %}—{% endif %}
                   </td>
-                  <td data-label="ESR">{{ metric_summary(metrics.esr) }}</td>
-                  <td data-label="Human-weighted ESR">{{ metric_summary(metrics.human_weighted_esr) }}</td>
-                  <td data-label="MRSTFT">{{ metric_summary(metrics.mrstft) }}</td>
+                  <td data-label="ESR">{{ metric_summary(metrics.esr, nam_metrics.esr) }}</td>
+                  <td data-label="Human-weighted ESR">{{ metric_summary(metrics.human_weighted_esr, nam_metrics.human_weighted_esr) }}</td>
+                  <td data-label="MRSTFT">{{ metric_summary(metrics.mrstft, nam_metrics.mrstft) }}</td>
                 </tr>
               {% else %}
                 <tr class="empty-row">

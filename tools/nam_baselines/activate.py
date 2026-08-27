@@ -16,7 +16,6 @@ from top_arena_server.models import Amp, BenchmarkCase, BenchmarkRun
 
 LOGGER = logging.getLogger(__name__)
 POSITION_COUNT = 10
-SOUND_COUNT = 5
 REFERENCE_LATENCY_SAMPLES = 9
 
 
@@ -112,24 +111,24 @@ class DatasetActivator:
             f"{nam_root}/position-{index:02d}/metadata.json"
             for index in range(1, POSITION_COUNT + 1)
         ]
+        sounds = cast("list[dict[str, Any]]", dry_manifest["sounds"])
+        if len(sounds) != int(dry_manifest["sound_count"]) or not sounds:
+            msg = "dry manifest has an invalid sound count"
+            raise ValueError(msg)
+        sound_ids = [str(sound["sound_id"]) for sound in sounds]
         required_wet_keys = {
-            f"{wet_root}/position-{position:02d}/sound-{sound:02d}.flac"
+            f"{wet_root}/position-{position:02d}/{sound_id}.flac"
             for position in range(1, POSITION_COUNT + 1)
-            for sound in range(1, SOUND_COUNT + 1)
+            for sound_id in sound_ids
         }
         if not set(metadata_keys).issubset(nam_keys) or not required_wet_keys.issubset(wet_keys):
             return None
 
-        sounds = cast("list[dict[str, Any]]", dry_manifest["sounds"])
-        selected_sounds = sounds[:SOUND_COUNT]
-        if len(selected_sounds) != SOUND_COUNT:
-            msg = f"dry manifest has fewer than {SOUND_COUNT} sounds"
-            raise ValueError(msg)
         metadata_by_position = {
             index: self._json(key) for index, key in enumerate(metadata_keys, start=1)
         }
         cases: list[CaseSpec] = []
-        for chunk_index, sound in enumerate(selected_sounds):
+        for chunk_index, sound in enumerate(sounds):
             sound_id = str(sound["sound_id"])
             dry_key = self._storage_key(f"{self.prefix}/{sound['file']}")
             for position_index, position in enumerate(positions):

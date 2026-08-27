@@ -137,7 +137,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260822-log-esr" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260826-nam-full-aggregates" in dashboard_response.text
             assert 'class="hero"' not in dashboard_response.text
             assert 'class="hero-stats"' not in dashboard_response.text
             assert "Hear less hype" not in dashboard_response.text

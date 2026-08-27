@@ -6,7 +6,7 @@ import logging
 import math
 import re
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -242,3 +242,141 @@ def prepare_dry(config: CorpusConfig, candidates_csv: Path, *, upload: bool = Tr
 
 def load_dry_manifest(config: CorpusConfig) -> dict[str, Any]:
     return json.loads((config.root / "manifests" / "dry.json").read_text())
+
+
+def _load_complete_loop(path: Path, config: CorpusConfig) -> np.ndarray:
+    audio, source_rate = sf.read(path, always_2d=True, dtype="float64")
+    mono = np.mean(audio, axis=1)
+    if source_rate != config.sample_rate:
+        divisor = math.gcd(source_rate, config.sample_rate)
+        mono = resample_poly(mono, config.sample_rate // divisor, source_rate // divisor)
+    return np.asarray(mono, dtype=np.float64)
+
+
+def prepare_loop_dry(
+    config: CorpusConfig,
+    source_directory: Path,
+    selection: tuple[str, ...],
+    *,
+    upload: bool = True,
+) -> Path:
+    """Normalize complete 16-beat loops and stream completed conversions to S3."""
+    if len(selection) != config.sound_count or len(set(selection)) != len(selection):
+        msg = f"expected {config.sound_count} unique loop IDs"
+        raise ValueError(msg)
+    manifest_rows = list(
+        csv.DictReader((source_directory / "loop_manifest.tsv").open(), delimiter="\t")
+    )
+    rows_by_id = {row["file"][:3]: row for row in manifest_rows}
+    missing = [loop_id for loop_id in selection if loop_id not in rows_by_id]
+    if missing:
+        msg = f"unknown loop IDs: {', '.join(missing)}"
+        raise ValueError(msg)
+
+    dry_dir = config.root / "dry"
+    dry_dir.mkdir(parents=True, exist_ok=True)
+    for stale in dry_dir.glob("sound-*.flac"):
+        stale.unlink()
+    reference_levels = measure_levels(config.reference)
+
+    def convert(index_and_id: tuple[int, str]) -> tuple[int, dict[str, Any], Path]:
+        index, loop_id = index_and_id
+        row = rows_by_id[loop_id]
+        source = source_directory / row["file"]
+        source_info = sf.info(source)
+        normalized, before, after, gain_db = _normalize_clip(
+            _load_complete_loop(source, config),
+            target_lufs=reference_levels.integrated_lufs,
+            config=config,
+        )
+        loudness_error = abs(after.integrated_lufs - reference_levels.integrated_lufs)
+        if loudness_error > config.max_loudness_error_lu:
+            msg = f"{loop_id} is {loudness_error:.1f} LU from the reference after peak capping"
+            raise ValueError(msg)
+        sound_id = f"sound-{index:02d}"
+        output = dry_dir / f"{sound_id}.flac"
+        sf.write(output, normalized, config.sample_rate, format="FLAC", subtype="PCM_24")
+        item = {
+            "sound_id": sound_id,
+            "song": row["song"],
+            "loop_number": int(row["loop_number"]),
+            "beats": int(row["beats"]),
+            "bpm": float(row["bpm"]),
+            "source_url": row["source_url"],
+            "source_file": row["file"],
+            "source_sha256": sha256(source),
+            "source_sample_rate": source_info.samplerate,
+            "source_frames": source_info.frames,
+            "source_start_seconds": float(row["source_start"]),
+            "source_end_seconds": float(row["source_end"]),
+            "file": str(output.relative_to(config.root)),
+            "sha256": sha256(output),
+            "frames": len(normalized),
+            "sample_rate": config.sample_rate,
+            "duration_seconds": len(normalized) / config.sample_rate,
+            "input_gain_db": gain_db,
+            "levels_before": asdict(before),
+            "levels_after": asdict(after),
+        }
+        return index, item, output
+
+    converted: dict[int, dict[str, Any]] = {}
+    upload_futures: list[Future[None]] = []
+    with (
+        ThreadPoolExecutor(
+            max_workers=config.download_workers,
+            thread_name_prefix="loop-convert",
+        ) as conversions,
+        ThreadPoolExecutor(
+            max_workers=config.upload_workers,
+            thread_name_prefix="dry-upload",
+        ) as uploads,
+    ):
+        futures = [conversions.submit(convert, item) for item in enumerate(selection, start=1)]
+        for future in as_completed(futures):
+            index, item, output = future.result()
+            converted[index] = item
+            LOGGER.info(
+                "[%02d/%d] %s: %.1f LUFS (%+.1f dB)",
+                index,
+                config.sound_count,
+                item["song"],
+                item["levels_after"]["integrated_lufs"],
+                item["input_gain_db"],
+            )
+            if upload:
+                upload_futures.append(
+                    uploads.submit(s3_upload, output, f"{config.s3_root}/dry/{output.name}")
+                )
+        for future in upload_futures:
+            future.result()
+
+    sounds = [converted[index] for index in range(1, config.sound_count + 1)]
+    manifest_path = config.root / "manifests" / "dry.json"
+    manifest = {
+        "format": "top-arena.reference-dry.v2",
+        "reference": {
+            "path": str(config.reference),
+            "sha256": sha256(config.reference),
+            "levels": asdict(reference_levels),
+        },
+        "source": {
+            "directory": str(source_directory),
+            "manifest": "loop_manifest.tsv",
+            "selection": list(selection),
+        },
+        "normalization": {
+            "method": "constant_linear_gain",
+            "target_lufs": reference_levels.integrated_lufs,
+            "true_peak_cap_db": config.true_peak_cap_db,
+            "max_loudness_error_lu": config.max_loudness_error_lu,
+            "limiter": False,
+        },
+        "sound_count": len(sounds),
+        "duration_seconds": sum(float(row["duration_seconds"]) for row in sounds),
+        "sounds": sounds,
+    }
+    write_json(manifest_path, manifest)
+    if upload:
+        s3_upload(manifest_path, f"{config.s3_root}/manifests/dry.json")
+    return manifest_path
