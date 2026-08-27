@@ -110,7 +110,7 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.match(esrCell.textContent, /Model 20\.0% lower/);
 });
 
-test("Pareto chart plots positions against ESR on a logarithmic scale", async () => {
+test("Pareto chart plots control-position coverage against ESR on a logarithmic scale", async () => {
   const values = [
     ["run-low", 1, 0.001],
     ["run-mid", 5, 0.01],
@@ -147,4 +147,46 @@ test("Pareto chart plots positions against ESR on a logarithmic scale", async ()
       .filter((label) => label.includes("e-") || label.startsWith("0.")),
     ["0.001", "0.01", "0.1"],
   );
+});
+
+test("Pareto chart favors more positions across more knobs and switches", async () => {
+  const values = [
+    ["broad", 10, 40, 0.1],
+    ["narrow", 5, 39, 0.1],
+    ["accurate", 5, 40, 0.05],
+    ["dominated", 10, 30, 0.2],
+  ];
+  const runs = values.map(([id, controls, positions, esr]) => {
+    const value = run(id, id, "blackface-63", "Blackface 63");
+    value.amp_control_count = controls;
+    value.unique_positions_used = positions;
+    value.metrics.esr.mean = esr;
+    return value;
+  });
+  const dom = new JSDOM(markup({ runs }), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  dom.window.setInterval = () => 1;
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  const points = new Map(
+    [...document.querySelectorAll("#pareto-chart .run-point")]
+      .map((point) => [point.getAttribute("aria-label").split(":", 1)[0], point]),
+  );
+  assert.ok(
+    Number(points.get("broad").getAttribute("cx"))
+      > Number(points.get("narrow").getAttribute("cx")),
+  );
+  assert.match(points.get("broad").getAttribute("aria-label"), /400 control positions/);
+  assert.match(points.get("broad").getAttribute("aria-label"), /on the Pareto frontier/);
+  assert.doesNotMatch(points.get("narrow").getAttribute("aria-label"), /on the Pareto frontier/);
+  assert.match(points.get("accurate").getAttribute("aria-label"), /on the Pareto frontier/);
+  assert.doesNotMatch(
+    points.get("dominated").getAttribute("aria-label"),
+    /on the Pareto frontier/,
+  );
+  assert.match(document.querySelector("#pareto-chart .axis-title").textContent, /higher is better/i);
 });

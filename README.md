@@ -130,9 +130,10 @@ The [Top Arena web application](https://top-arena.labqoat.com) serves three audi
 - listeners can open a run and audition dry, reference, candidate, and NAM baseline
   audio for individual cases.
 
-The leaderboard shows status, aggregate metrics, speed, and the minimization Pareto
-frontier for mean ESR versus unique training positions. Every model links to a
-lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The selected case is
+The leaderboard shows status, aggregate metrics, speed, and the Pareto frontier for
+mean ESR versus control-position coverage (unique training positions multiplied by the
+amp's knobs and switches). Lower ESR and higher coverage are better. Every model links to
+a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The selected case is
 preserved in copied URLs and browser history, while large audio objects are only loaded
 when playback begins. Interactive API documentation is available at
 [`/docs`](https://top-arena.labqoat.com/docs), and the health endpoint is `/health`.
