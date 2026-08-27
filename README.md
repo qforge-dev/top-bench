@@ -85,7 +85,14 @@ run = benchmark.create(
     training_time=5_000.0,
     description="Model architecture and training-data summary",
     parameter_count=40_000,
-    options=PipelineOptions(run_concurrency=1),
+    options=PipelineOptions(
+        download_concurrency=4,
+        run_concurrency=1,
+        upload_concurrency=4,
+        report_format="agent",
+        report_min_finding_signal=1.0,
+        report_min_evidence_signal=1.0,
+    ),
 )
 
 
@@ -107,6 +114,12 @@ metadata definitions, pipeline options, caching, error behavior, and result fiel
 [`examples/passthrough_benchmark.py`](examples/passthrough_benchmark.py) is a runnable
 end-to-end smoke test.
 
+The client uses bounded download → inference → upload queues. Each stage overlaps the
+others, dry files are cached by content hash, and every stage transition is sent to the
+server event log. `realtime_x` is audio duration divided by model wall time.
+Speed is higher-is-better and is evaluated against a 31x NAM-FULL target; 15.5x is the
+acceptable floor. Merely exceeding 1x is not classified as a strength.
+
 ## Use the web application
 
 The [Top Arena web application](https://top-arena.labqoat.com) serves three audiences:
@@ -127,6 +140,18 @@ when playback begins. Interactive API documentation is available at
 There is currently no account system or private API surface. Model metadata and
 submitted outputs are intended for the public benchmark. The SDK uploads model output
 audio; it does not upload model weights, source code, or private training data.
+
+To see the complete progress and report experience locally, with no external server or
+dataset, run:
+
+```bash
+uv run python examples/local_diagnostic_demo.py
+```
+
+The `agent`, `text`, `json`, and `jsonl` modes, stream guarantees, and report fields are
+documented in [`docs/running-benchmark-cli.md`](docs/running-benchmark-cli.md). Metric
+meaning and interpretation limits are documented separately in
+[`docs/interpreting-benchmark-results.md`](docs/interpreting-benchmark-results.md).
 
 ## Scores
 

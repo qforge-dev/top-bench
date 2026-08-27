@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import io
 import math
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pytest
 import soundfile as sf
+from top_arena_server.diagnostics import aggregate_diagnostics, calculate_case_diagnostics
 from top_arena_server.metrics import calculate_metrics
-from top_arena_server.models import RunCase
+from top_arena_server.models import Amp, BenchmarkCase, RunCase
 from top_arena_server.scoring import ScoringService, aggregate_metrics
 
 
@@ -199,9 +200,211 @@ def test_realtime_summary_treats_more_realtime_x_as_better() -> None:
         "hop_seconds": 0.1,
         "dbfs_floor": -120.0,
     }
+    assert metrics["contract"]["diagnostics"]["run_version"] == ("top-arena-run-diagnostics-v6")
     assert metrics["level_db"]["best"] == 1.0
     assert metrics["level_db"]["worst"] == 4.0
     assert metrics["peak_db"]["best"] == 2.0
     assert metrics["peak_db"]["worst"] == 8.0
     assert metrics["correlation"]["best"] == 1.0
     assert metrics["correlation"]["worst"] == 0.25
+
+
+def test_case_diagnostics_preserve_the_sign_and_frequency_of_a_tonal_difference() -> None:
+    sample_rate = 48_000
+    time = np.arange(sample_rate, dtype=np.float64) / sample_rate
+    bass = 0.1 * np.sin(2 * np.pi * 100 * time)
+    presence = 0.1 * np.sin(2 * np.pi * 3_000 * time)
+    reference = bass + presence
+    candidate = bass + 2.0 * presence
+
+    diagnostics = calculate_case_diagnostics(
+        reference,
+        reference,
+        candidate,
+        sample_rate=sample_rate,
+    )
+
+    bands = {band["id"]: band for band in diagnostics["bands"]}
+    assert bands["presence"]["signed_delta_db"] == pytest.approx(6.0206, abs=0.05)
+    assert bands["bass"]["signed_delta_db"] == pytest.approx(0.0, abs=0.05)
+    assert diagnostics["signed"]["level_delta_db"] > 3.0
+    assert diagnostics["top_regions"][0]["dominant_error_band"] == "presence"
+    assert diagnostics["band_regions"]["presence"]["selected_band_delta_db"] == pytest.approx(
+        6.0206, abs=0.05
+    )
+    assert diagnostics["band_regions"]["presence"]["selected_band"] == "presence"
+
+
+def test_tonal_finding_explains_control_settings_and_setting_level_pattern() -> None:
+    amp = Amp(
+        id="amp",
+        name="Amp",
+        amp_type="guitar",
+        control_names=["volume", "bright"],
+    )
+    rows = []
+    for index, volume in enumerate((0.1, 0.3, 0.5, 0.7, 0.9)):
+        delta = -(index + 1.0)
+        benchmark_case = BenchmarkCase(
+            id=f"case-{index + 1}",
+            amp=amp,
+            amp_id=amp.id,
+            chunk_index=0,
+            position_index=index,
+            position_matrix=[[volume, 1.0]],
+            dry_key="dry.wav",
+            dry_sha256="hash",
+            reference_wet_key="reference.wav",
+            duration_seconds=1.0,
+        )
+        rows.append(
+            RunCase(
+                run_id="run",
+                benchmark_case_id=benchmark_case.id,
+                benchmark_case=benchmark_case,
+                status="completed",
+                esr=0.1,
+                analysis={
+                    "diagnostics": {
+                        "signed": {},
+                        "bands": [
+                            {
+                                "id": "upper_mids",
+                                "signed_delta_db": delta,
+                                "error_energy_share": 0.5,
+                            }
+                        ],
+                        "onsets": {},
+                        "phases": {},
+                        "band_regions": {
+                            "upper_mids": {
+                                "start_seconds": 0.1,
+                                "stop_seconds": 0.2,
+                                "selected_band": "upper_mids",
+                                "selected_band_delta_db": delta,
+                            }
+                        },
+                        "input": {},
+                    }
+                },
+            )
+        )
+
+    diagnostics = aggregate_diagnostics(rows)
+    finding = next(
+        item
+        for item in diagnostics["findings"]["significant"]
+        if item["title"].endswith("Upper mids")
+    )
+
+    assert finding["evidence"].endswith("candidate is lower in 5/5 cases.")
+    assert finding["condition_patterns"][0]["control"] == "volume"
+    assert finding["condition_patterns"][0]["spearman_rho"] == pytest.approx(1.0)
+    assert finding["condition_patterns"][0]["settings"] == 5
+    assert finding["cases"][0]["input_chunk"] == 1
+    assert finding["cases"][0]["control_setting_id"] == 5
+    assert finding["cases"][0]["controls"] == {"volume": 0.9, "bright": 1.0}
+    assert "control_sequence" not in finding["cases"][0]
+    assert "dry_loop" not in finding["cases"][0]
+    assert "position" not in finding["cases"][0]
+    assert "action" not in finding
+
+
+def test_run_diagnostics_report_paired_baseline_without_duplicate_loss_count() -> None:
+    samples = np.arange(4_800, dtype=np.float64) / 48_000
+    reference = np.sin(2 * np.pi * 1_000 * samples)
+    candidate = 0.8 * reference
+    case_diagnostics = calculate_case_diagnostics(
+        reference,
+        reference,
+        candidate,
+        sample_rate=48_000,
+    )
+    row = RunCase(
+        run_id="run",
+        benchmark_case_id="case-a",
+        status="completed",
+        esr=0.04,
+        human_weighted_esr=0.04,
+        mrstft=0.2,
+        level_db=1.9,
+        peak_db=1.9,
+        correlation=1.0,
+        nam_esr=0.08,
+        nam_human_weighted_esr=0.08,
+        nam_mrstft=0.3,
+        analysis={"diagnostics": case_diagnostics},
+    )
+
+    diagnostics = aggregate_diagnostics([row])
+
+    paired = diagnostics["paired_nam"]["esr"]
+    assert paired["candidate_better_cases"] == 1
+    assert paired["cases"] == 1
+    assert paired["median_candidate_improvement_percent"] == pytest.approx(50.0)
+    assert "candidate_worse_cases" not in paired
+    assert diagnostics["error_concentration"]["cases_for_50_percent"] == 1
+    assert diagnostics["findings"]["strengths"][0]["evidence_level"] == "derived"
+    assert diagnostics["version"] == "top-arena-run-diagnostics-v6"
+    assert "unsupported" not in diagnostics
+
+
+def test_matching_audio_does_not_generate_significant_findings() -> None:
+    samples = np.arange(4_800, dtype=np.float64) / 48_000
+    reference = np.sin(2 * np.pi * 1_000 * samples)
+    row = RunCase(
+        run_id="run",
+        benchmark_case_id="matched-case",
+        status="completed",
+        esr=0.0,
+        human_weighted_esr=0.0,
+        mrstft=0.0,
+        level_db=0.0,
+        peak_db=0.0,
+        correlation=1.0,
+        analysis={
+            "diagnostics": calculate_case_diagnostics(
+                reference,
+                reference,
+                reference,
+                sample_rate=48_000,
+            )
+        },
+    )
+
+    diagnostics = aggregate_diagnostics([row] * 15)
+
+    assert all(
+        finding["signal_strength"] < 1.0 for finding in diagnostics["findings"]["significant"]
+    )
+    assert diagnostics["error_concentration"]["cases_for_50_percent"] == 0
+
+
+def test_speed_uses_nam_full_target_and_half_target_floor() -> None:
+    def diagnostics_for(values: tuple[float, ...]) -> dict[str, Any]:
+        rows = [
+            RunCase(
+                run_id="run",
+                benchmark_case_id=f"speed-{index}",
+                status="completed",
+                realtime_x=value,
+                analysis={},
+            )
+            for index, value in enumerate(values)
+        ]
+        return aggregate_diagnostics(rows)
+
+    target = diagnostics_for((31.0, 40.0))
+    acceptable = diagnostics_for((15.5, 20.0))
+    slow = diagnostics_for((10.0, 20.0))
+
+    assert target["speed"]["status"] == "target_met"
+    assert target["findings"]["strengths"][0]["title"] == (
+        "NAM-FULL speed target met on every case"
+    )
+    assert acceptable["speed"]["status"] == "acceptable"
+    assert acceptable["findings"] == {"strengths": [], "significant": []}
+    assert slow["speed"]["status"] == "below_acceptable"
+    finding = slow["findings"]["significant"][0]
+    assert finding["title"] == "Cases below the acceptable speed floor"
+    assert finding["cases"][0]["realtime_x"] == 10.0

@@ -6,6 +6,7 @@ from __future__ import annotations
 from importlib.metadata import version
 from pathlib import Path
 
+import pytest
 from top_arena import PipelineOptions, __version__, benchmark
 
 
@@ -40,3 +41,17 @@ def test_default_server_is_the_online_leaderboard() -> None:
 
 def test_installed_distribution_exposes_its_version() -> None:
     assert __version__ == version("top-arena")
+
+
+def test_report_signal_thresholds_are_non_negative_and_finite() -> None:
+    permissive = PipelineOptions(
+        report_min_finding_signal=0.0,
+        report_min_evidence_signal=0.5,
+    )
+
+    assert permissive.report_min_finding_signal == 0.0
+    assert permissive.report_min_evidence_signal == 0.5
+    with pytest.raises(ValueError, match="signal thresholds"):
+        PipelineOptions(report_min_finding_signal=-1.0)
+    with pytest.raises(ValueError, match="signal thresholds"):
+        PipelineOptions(report_min_evidence_signal=float("inf"))

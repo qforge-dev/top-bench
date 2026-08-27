@@ -56,6 +56,9 @@ run = benchmark.create(
         download_concurrency=4,
         run_concurrency=1,
         upload_concurrency=4,
+        report_format="agent",
+        report_min_finding_signal=1.0,
+        report_min_evidence_signal=1.0,
     ),
 )
 
@@ -152,8 +155,48 @@ options = PipelineOptions(
     queue_capacity=16,
     poll_interval_seconds=1.0,
     completion_timeout_seconds=1_800.0,
+    report_format="agent",
+    show_progress=True,
+    report_min_finding_signal=1.0,
+    report_min_evidence_signal=1.0,
 )
 ```
+
+## CLI-style progress and reports
+
+`report_format="agent"` prints one dot to stderr for each case fully scored by the
+server, followed by one self-contained report on stdout. The report is descriptive:
+it contains measurements, signal-selection math, interpretations, complete control
+settings, parameter patterns, exact case IDs, and supporting time regions. It does not
+contain recommended actions or “what to do next” fields.
+
+Available formats are:
+
+| Format | Output |
+| --- | --- |
+| `agent` | Detailed data-first diagnostic report; progress dots remain on stderr. |
+| `text` | Compact metric and significant-finding summary. |
+| `json` | One complete `BenchmarkResult` object on stdout. |
+| `jsonl` | Machine-readable lifecycle, progress, and final-result events. |
+| `none` | No console output; use the returned result directly. |
+
+Findings and supporting cases are selected by normalized signal strength, not a fixed
+count. A value of `1.0` reaches that diagnostic's published default threshold. Raise
+`report_min_finding_signal` or `report_min_evidence_signal` for stricter terminal
+output, or set either to `0` to display all calculated candidates. These display
+thresholds do not remove data from the returned result or JSON.
+
+The complete local demonstration exercises the real API, workers, SDK, diagnostics, and
+reporter without an external service:
+
+```bash
+uv run python examples/local_diagnostic_demo.py
+```
+
+Detailed output semantics and mathematical interpretation are documented in
+[`docs/running-benchmark-cli.md`](https://github.com/qforge-dev/top-bench/blob/main/docs/running-benchmark-cli.md)
+and
+[`docs/interpreting-benchmark-results.md`](https://github.com/qforge-dev/top-bench/blob/main/docs/interpreting-benchmark-results.md).
 
 ## Scores and results
 
@@ -161,6 +204,14 @@ options = PipelineOptions(
 `metrics` mapping contains mean, P90, best, and worst summaries for the versioned
 metric contract. The primary metrics are ESR, human-weighted ESR, and MRSTFT; lower
 is better. Correlation and render speed are also reported; higher is better.
+Speed is evaluated against the 31x NAM-FULL target, with 15.5x as the acceptable floor.
+
+When the server provides diagnostic contract `top-arena-run-diagnostics-v6`,
+`result.metrics["diagnostics"]` also contains signed level and band measurements,
+attack/body/sustain summaries, paired NAM comparisons, ESR concentration,
+control-setting relationships, strengths, and signal-qualified significant findings.
+The structured `findings` object contains `strengths` and `significant`; it contains
+no `action` field.
 
 The run appears on the public leaderboard while it progresses. If the callback,
 download, conversion, upload, or server-side scoring fails, the SDK raises the

@@ -5,10 +5,11 @@ import io
 import logging
 from collections.abc import Sequence
 from contextlib import suppress
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import soundfile as sf
+from numpy.typing import NDArray
 from scipy import signal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,8 +17,9 @@ from sqlalchemy.orm import joinedload
 
 from .config import Settings
 from .database import Database
+from .diagnostics import aggregate_diagnostics, calculate_case_diagnostics
 from .metrics import AudioMetrics, calculate_metrics
-from .models import BenchmarkRun, RunCase, RunEvent, now_utc
+from .models import BenchmarkCase, BenchmarkRun, RunCase, RunEvent, now_utc
 from .storage import ObjectStorage
 
 LOGGER = logging.getLogger(__name__)
@@ -121,30 +123,36 @@ class ScoringService:
             reference_key = run_case.benchmark_case.reference_wet_key
             reference_latency_samples = run_case.benchmark_case.reference_latency_samples
             nam_reference_key = run_case.benchmark_case.nam_reference_wet_key
+            dry_key = run_case.benchmark_case.dry_key
             candidate_key = run_case.candidate_wet_key
 
-        reference_bytes, candidate_bytes = await asyncio.gather(
-            self._storage.get(reference_key), self._storage.get(candidate_key)
+        reference_bytes, candidate_bytes, dry_bytes = await asyncio.gather(
+            self._storage.get(reference_key),
+            self._storage.get(candidate_key),
+            self._storage.get(dry_key),
         )
         nam_reference_bytes = (
             await self._storage.get(nam_reference_key) if nam_reference_key is not None else None
         )
-        metrics = await asyncio.to_thread(
-            self._metrics_from_audio,
+        metrics, diagnostics = await asyncio.to_thread(
+            self._metrics_and_diagnostics_from_audio,
             reference_bytes,
             candidate_bytes,
+            dry_bytes,
             reference_latency_samples=reference_latency_samples,
         )
-        nam_metrics = (
+        nam_result = (
             await asyncio.to_thread(
-                self._metrics_from_audio,
+                self._metrics_and_diagnostics_from_audio,
                 reference_bytes,
                 nam_reference_bytes,
+                dry_bytes,
                 reference_latency_samples=reference_latency_samples,
             )
             if nam_reference_bytes is not None
             else None
         )
+        nam_metrics, nam_diagnostics = nam_result if nam_result is not None else (None, None)
 
         async with self._database.session() as session:
             run_case = await session.get(RunCase, run_case_id)
@@ -158,6 +166,7 @@ class ScoringService:
             run_case.peak_db = metrics.peak_db
             run_case.correlation = metrics.correlation
             analysis: dict[str, Any] = dict(metrics.analysis)
+            analysis["diagnostics"] = diagnostics
             if nam_metrics is not None:
                 run_case.nam_esr = nam_metrics.esr
                 run_case.nam_human_weighted_esr = nam_metrics.human_weighted_esr
@@ -166,6 +175,7 @@ class ScoringService:
                 run_case.nam_peak_db = nam_metrics.peak_db
                 run_case.nam_correlation = nam_metrics.correlation
                 analysis["nam_points"] = nam_metrics.analysis["points"]
+                analysis["nam_diagnostics"] = nam_diagnostics
             run_case.analysis = analysis
             run_case.scored_at = now_utc()
             session.add(
@@ -204,25 +214,47 @@ class ScoringService:
         *,
         reference_latency_samples: int,
     ) -> AudioMetrics:
-        reference, reference_rate = sf.read(
-            io.BytesIO(reference_bytes), dtype="float32", always_2d=False
+        reference_array, candidate_array, reference_rate = ScoringService._aligned_audio(
+            reference_bytes,
+            candidate_bytes,
+            reference_latency_samples=reference_latency_samples,
         )
-        candidate, candidate_rate = sf.read(
-            io.BytesIO(candidate_bytes), dtype="float32", always_2d=False
+        return calculate_metrics(reference_array, candidate_array, sample_rate=reference_rate)
+
+    @staticmethod
+    def _metrics_and_diagnostics_from_audio(
+        reference_bytes: bytes,
+        candidate_bytes: bytes,
+        dry_bytes: bytes,
+        *,
+        reference_latency_samples: int,
+    ) -> tuple[AudioMetrics, dict[str, Any]]:
+        reference_array, candidate_array, reference_rate = ScoringService._aligned_audio(
+            reference_bytes,
+            candidate_bytes,
+            reference_latency_samples=reference_latency_samples,
         )
-        reference_array = np.asarray(reference, dtype=np.float32)
-        candidate_array = np.asarray(candidate, dtype=np.float32)
-        if reference_array.ndim == 2:
-            reference_array = reference_array.mean(axis=1)
-        if candidate_array.ndim == 2:
-            candidate_array = candidate_array.mean(axis=1)
-        if candidate_rate != reference_rate:
-            divisor = int(np.gcd(candidate_rate, reference_rate))
-            candidate_array = signal.resample_poly(
-                candidate_array,
-                reference_rate // divisor,
-                candidate_rate // divisor,
-            ).astype(np.float32)
+        dry_array, dry_rate = ScoringService._read_mono(dry_bytes)
+        dry_array = ScoringService._resample(dry_array, dry_rate, reference_rate)
+        metrics = calculate_metrics(reference_array, candidate_array, sample_rate=reference_rate)
+        diagnostics = calculate_case_diagnostics(
+            dry_array,
+            reference_array,
+            candidate_array,
+            sample_rate=reference_rate,
+        )
+        return metrics, diagnostics
+
+    @staticmethod
+    def _aligned_audio(
+        reference_bytes: bytes,
+        candidate_bytes: bytes,
+        *,
+        reference_latency_samples: int,
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], int]:
+        reference_array, reference_rate = ScoringService._read_mono(reference_bytes)
+        candidate_array, candidate_rate = ScoringService._read_mono(candidate_bytes)
+        candidate_array = ScoringService._resample(candidate_array, candidate_rate, reference_rate)
         if reference_latency_samples < 0:
             msg = "reference latency must not be negative"
             raise ValueError(msg)
@@ -235,7 +267,33 @@ class ScoringService:
                 raise ValueError(msg)
             reference_array = reference_array[reference_latency_samples:]
             candidate_array = candidate_array[:-reference_latency_samples]
-        return calculate_metrics(reference_array, candidate_array, sample_rate=reference_rate)
+        return reference_array, candidate_array, reference_rate
+
+    @staticmethod
+    def _read_mono(value: bytes) -> tuple[NDArray[np.float32], int]:
+        audio, sample_rate = sf.read(io.BytesIO(value), dtype="float32", always_2d=False)
+        array = np.asarray(audio, dtype=np.float32)
+        if array.ndim == 2:
+            array = array.mean(axis=1)
+        return array, int(sample_rate)
+
+    @staticmethod
+    def _resample(
+        value: NDArray[np.float32],
+        source_rate: int,
+        target_rate: int,
+    ) -> NDArray[np.float32]:
+        if source_rate == target_rate:
+            return value
+        divisor = int(np.gcd(source_rate, target_rate))
+        return cast(
+            "NDArray[np.float32]",
+            signal.resample_poly(
+                value,
+                target_rate // divisor,
+                source_rate // divisor,
+            ).astype(np.float32),
+        )
 
     async def _finalize_if_ready(self, run: BenchmarkRun, session: AsyncSession) -> bool:
         if run.status in {"completed", "failed"}:
@@ -254,10 +312,9 @@ class ScoringService:
             return False
         rows = (
             await session.scalars(
-                select(RunCase).where(
-                    RunCase.run_id == run.id,
-                    RunCase.status == "completed",
-                )
+                select(RunCase)
+                .options(joinedload(RunCase.benchmark_case).joinedload(BenchmarkCase.amp))
+                .where(RunCase.run_id == run.id, RunCase.status == "completed")
             )
         ).all()
         run.completed_cases = len(rows)
@@ -322,6 +379,16 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
                 "hop_seconds": 0.1,
                 "dbfs_floor": -120.0,
             },
+            "diagnostics": {
+                "case_version": "top-arena-case-diagnostics-v1",
+                "run_version": "top-arena-run-diagnostics-v6",
+                "display_bands_hz": [20, 80, 150, 400, 800, 2_000, 4_000, 8_000, 20_000],
+                "phase_windows_ms": {
+                    "transient": [0, 50],
+                    "early_body": [50, 200],
+                    "sustain": [200, 500],
+                },
+            },
             "human_weighting": "A-weighted spectral ESR",
             "comparisons": {
                 "bias_x": "candidate vs latency-aligned BIAS X reference",
@@ -366,4 +433,5 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             higher_is_better=True,
         ),
     }
+    result["diagnostics"] = aggregate_diagnostics(rows)
     return result

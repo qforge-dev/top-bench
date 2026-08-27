@@ -22,6 +22,7 @@ from top_arena._models import (
     ModelCallback,
     PipelineOptions,
 )
+from top_arena._reporting import ConsoleReporter
 
 if TYPE_CHECKING:
     from top_arena._gateway import BenchmarkGateway
@@ -82,16 +83,28 @@ class BenchmarkRun:
     async def run_async(self, amp_id: str, callback: ModelCallback) -> BenchmarkResult:
         """Run the benchmark without taking ownership of the caller's event loop."""
         run_id: str | None = None
+        completion_task: asyncio.Task[BenchmarkResult] | None = None
+        reporter = ConsoleReporter(
+            self._options.report_format,
+            show_progress=self._options.show_progress,
+            min_finding_signal=self._options.report_min_finding_signal,
+            min_evidence_signal=self._options.report_min_evidence_signal,
+        )
         self._cache_locks = {}
         try:
             run_id = await self._gateway.create_run(self._metadata, amp_id)
+            reporter.start(self._metadata.name, amp_id)
+            completion_task = asyncio.create_task(self._wait_for_result(run_id, reporter))
             await self._gateway.emit_event(run_id, "run.started", payload={"amp_id": amp_id})
             cases = await self._gateway.get_manifest(amp_id)
             await self._execute_pipeline(run_id, cases, callback)
             await self._gateway.finish_run(run_id)
             await self._gateway.emit_event(run_id, "run.finish_requested")
-            return await self._wait_for_result(run_id)
+            result = await completion_task
+            reporter.finish(result)
+            return result  # noqa: TRY300
         except Exception as error:
+            reporter.fail(error)
             if run_id is not None:
                 with suppress(Exception):
                     await self._gateway.emit_event(
@@ -101,6 +114,11 @@ class BenchmarkRun:
                     )
             raise
         finally:
+            if completion_task is not None:
+                if not completion_task.done():
+                    completion_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await completion_task
             if isinstance(self._gateway, _AsyncClosable):
                 await self._gateway.aclose()
 
@@ -258,11 +276,12 @@ class BenchmarkRun:
         with suppress(OSError):
             processed.wet_path.unlink()
 
-    async def _wait_for_result(self, run_id: str) -> BenchmarkResult:
+    async def _wait_for_result(self, run_id: str, reporter: ConsoleReporter) -> BenchmarkResult:
         try:
             async with asyncio.timeout(self._options.completion_timeout_seconds):
                 while True:
                     snapshot = await self._gateway.get_run(run_id)
+                    reporter.update(snapshot)
                     if snapshot.status == "completed":
                         return snapshot.result or BenchmarkResult(
                             run_id=snapshot.id,
