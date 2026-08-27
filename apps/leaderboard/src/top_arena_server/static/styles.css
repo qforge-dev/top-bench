@@ -672,7 +672,13 @@ tbody tr:last-child td {
 }
 
 .parameter-column {
-  min-width: 100px;
+  width: 1%;
+  min-width: 82px;
+  white-space: nowrap;
+}
+
+.parameter-column .sort-button {
+  padding-inline: 8px;
 }
 
 .metric-column {

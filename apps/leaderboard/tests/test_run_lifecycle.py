@@ -137,8 +137,8 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260827-amp-control-count" in dashboard_response.text
-            assert ">Amp parameters <" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260827-compact-amp-params" in dashboard_response.text
+            assert ">Amp params <" in dashboard_response.text
             assert (
                 'data-label="Amp parameters" class="numeric-cell">6</td>' in dashboard_response.text
             )
