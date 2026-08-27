@@ -197,6 +197,8 @@ Detailed output semantics and mathematical interpretation are documented in
 [`docs/running-benchmark-cli.md`](https://github.com/qforge-dev/top-bench/blob/main/docs/running-benchmark-cli.md)
 and
 [`docs/interpreting-benchmark-results.md`](https://github.com/qforge-dev/top-bench/blob/main/docs/interpreting-benchmark-results.md).
+Release changes are listed in the
+[`CHANGELOG`](https://github.com/qforge-dev/top-bench/blob/main/CHANGELOG.md).
 
 ## Scores and results
 

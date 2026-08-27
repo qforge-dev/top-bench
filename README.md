@@ -112,7 +112,7 @@ safe to invoke in parallel. The public service is the default; set
 See the [complete package guide](packages/top-arena/README.md) for callback details,
 metadata definitions, pipeline options, caching, error behavior, and result fields.
 [`examples/passthrough_benchmark.py`](examples/passthrough_benchmark.py) is a runnable
-end-to-end smoke test.
+end-to-end smoke test. Release changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 The client uses bounded download → inference → upload queues. Each stage overlaps the
 others, dry files are cached by content hash, and every stage transition is sent to the
