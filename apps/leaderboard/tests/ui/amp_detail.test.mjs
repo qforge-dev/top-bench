@@ -70,6 +70,10 @@ test("amp page scales model selection through a searchable table and chart tabs"
   assert.equal(document.querySelector("#selected-model-title").textContent, "Blackface v21 · 60s");
   assert.equal(document.querySelector("#selected-model-link").getAttribute("href"), "/runs/v21");
   assert.equal(document.querySelectorAll("#amp-comparison-chart .amp-run-point").length, 2);
+  assert.deepEqual(
+    [...document.querySelectorAll("#amp-comparison-chart .amp-point-label")].map((label) => label.textContent),
+    ["Blackface v22 · 30s", "Blackface v21 · 60s"],
+  );
   assert.equal(document.querySelector("#amp-standings .amp-link").getAttribute("href"), "/runs/v21");
 
   document.querySelector('[data-chart-mode="positions"]').click();

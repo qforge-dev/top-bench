@@ -385,8 +385,7 @@
     yTitle.textContent = "Mean ESR (lower is better)";
     elements.chart.append(xTitle, yTitle);
 
-    const best = rankedRuns()[0];
-    for (const run of runs) {
+    for (const [index, run] of runs.entries()) {
       const point = { x: xScale(mode.value(run)), y: yScale(run.esr) };
       const circle = createSvg("circle", {
         class: `amp-run-point${run.id === state.selectedId ? " is-selected" : ""}`,
@@ -409,11 +408,15 @@
         }
       });
       elements.chart.append(circle);
-      if (run.id === state.selectedId || run.id === best?.id) {
-        const label = createSvg("text", { class: "amp-point-label", x: point.x + 11, y: point.y - 11 });
-        label.textContent = run.name.length > 28 ? `${run.name.slice(0, 27)}…` : run.name;
-        elements.chart.append(label);
-      }
+      const labelOnLeft = point.x > width - margin.right - 250;
+      const label = createSvg("text", {
+        class: `amp-point-label${run.id === state.selectedId ? " is-selected" : ""}`,
+        x: point.x + (labelOnLeft ? -11 : 11),
+        y: point.y + (index % 2 === 0 ? -11 : 19),
+        "text-anchor": labelOnLeft ? "end" : "start",
+      });
+      label.textContent = run.name.length > 32 ? `${run.name.slice(0, 31)}…` : run.name;
+      elements.chart.append(label);
     }
   }
 

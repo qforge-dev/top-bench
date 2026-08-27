@@ -238,6 +238,8 @@
   font-weight: 650;
 }
 
+#amp-comparison-chart .amp-point-label.is-selected { fill: var(--accent); }
+
 #amp-comparison-chart .amp-run-point {
   fill: var(--blue);
   stroke: var(--canvas);
