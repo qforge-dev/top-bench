@@ -152,7 +152,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert "Demo Bias-X results · Top Arena" in amp_page_response.text
             assert "lifecycle-model" in amp_page_response.text
             assert 'data-amp-id="demo-bias-x"' in amp_page_response.text
-            assert "/static/amp_detail.js?v=20260827-amp-pages" in amp_page_response.text
+            assert "/static/amp_detail.js?v=20260827-all-point-labels" in amp_page_response.text
             assert 'data-chart-mode="positions"' in amp_page_response.text
             assert 'data-chart-mode="budget"' in amp_page_response.text
             assert (await client.get("/amps/not-a-real-amp")).status_code == 404
