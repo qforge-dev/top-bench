@@ -46,6 +46,8 @@ class _ProcessedCase:
 
 
 class BenchmarkRun:
+    """A configured model submission that can be run synchronously or asynchronously."""
+
     def __init__(
         self,
         *,
@@ -69,6 +71,7 @@ class BenchmarkRun:
         return self._cache_dir
 
     def run(self, amp_id: str, callback: ModelCallback) -> BenchmarkResult:
+        """Run the benchmark from synchronous Python and wait for final scores."""
         try:
             _ = asyncio.get_running_loop()
         except RuntimeError:
@@ -77,6 +80,7 @@ class BenchmarkRun:
         raise RuntimeError(msg)
 
     async def run_async(self, amp_id: str, callback: ModelCallback) -> BenchmarkResult:
+        """Run the benchmark without taking ownership of the caller's event loop."""
         run_id: str | None = None
         self._cache_locks = {}
         try:

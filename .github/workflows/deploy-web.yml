@@ -1,0 +1,140 @@
+name: Deploy web
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-web.yml"
+      - "apps/leaderboard/**"
+      - "infra/**"
+      - "pyproject.toml"
+      - "uv.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-web
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify web application
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+        env:
+          POSTGRES_DB: top_arena_deploy
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d top_arena_deploy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TOP_ARENA_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/top_arena_deploy
+      TOP_ARENA_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/top_arena_deploy
+      UV_NO_PROGRESS: "1"
+      UV_PYTHON: "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.5"
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked workspace
+        run: uv sync --locked --all-packages --all-groups
+
+      - name: Verify Python application
+        run: |
+          uv run --no-sync ruff format --check apps/leaderboard infra
+          uv run --no-sync ruff check apps/leaderboard infra
+          uv run --no-sync mypy
+          uv run --no-sync alembic -c infra/alembic.ini upgrade head
+          uv run --no-sync alembic -c infra/alembic.ini check
+          uv run --no-sync pytest apps/leaderboard/tests
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Verify dashboard application
+        run: |
+          npm ci --ignore-scripts
+          node --check apps/leaderboard/src/top_arena_server/static/dashboard.js
+          node --check apps/leaderboard/src/top_arena_server/static/case_detail.js
+          npm run test:ui
+
+  deploy:
+    name: Deploy production
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://top-arena.labqoat.com
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure deployment SSH key
+        env:
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/top-arena-deploy-key"
+          chmod 0600 "$RUNNER_TEMP/top-arena-deploy-key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+      - name: Build deployment archive
+        run: |
+          tar -czf "$RUNNER_TEMP/top-arena-${GITHUB_SHA}.tar.gz" \
+            pyproject.toml \
+            uv.lock \
+            apps/leaderboard \
+            packages/top-arena \
+            infra
+
+      - name: Upload and activate deployment
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          remote_archive="/tmp/top-arena-${GITHUB_SHA}.tar.gz"
+          ssh_options=(
+            -i "$RUNNER_TEMP/top-arena-deploy-key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+          )
+          scp "${ssh_options[@]}" \
+            "$RUNNER_TEMP/top-arena-${GITHUB_SHA}.tar.gz" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "bash -s -- '${DEPLOY_PATH}' '${remote_archive}'" < infra/deploy.sh
+
+      - name: Verify public service
+        run: curl --fail --show-error --retry 5 --retry-all-errors https://top-arena.labqoat.com/health

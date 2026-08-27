@@ -34,7 +34,7 @@ def main() -> None:
             parameter_count=0,
             server_url=os.environ.get(
                 "TOP_ARENA_SERVER_URL",
-                "https://top-arena.54-90-214-165.sslip.io",
+                "https://top-arena.labqoat.com",
             ),
         )
         result = run.run(AMP_ID, passthrough)

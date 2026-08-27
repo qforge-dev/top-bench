@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version
 from pathlib import Path
 
-from top_arena import PipelineOptions, benchmark
+from top_arena import PipelineOptions, __version__, benchmark
 
 
 def test_benchmark_create_builds_a_typed_run(tmp_path: Path) -> None:
@@ -34,4 +35,8 @@ def test_benchmark_create_builds_a_typed_run(tmp_path: Path) -> None:
 
 
 def test_default_server_is_the_online_leaderboard() -> None:
-    assert benchmark.DEFAULT_SERVER_URL == "https://top-arena.54-90-214-165.sslip.io"
+    assert benchmark.DEFAULT_SERVER_URL == "https://top-arena.labqoat.com"
+
+
+def test_installed_distribution_exposes_its_version() -> None:
+    assert __version__ == version("top-arena")

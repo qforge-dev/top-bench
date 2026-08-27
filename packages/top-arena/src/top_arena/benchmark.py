@@ -11,7 +11,7 @@ from top_arena._gateway import HttpBenchmarkGateway
 from top_arena._models import BenchmarkMetadata, PipelineOptions
 from top_arena._pipeline import BenchmarkRun
 
-DEFAULT_SERVER_URL = "https://top-arena.54-90-214-165.sslip.io"
+DEFAULT_SERVER_URL = "https://top-arena.labqoat.com"
 
 
 def create(
@@ -28,6 +28,12 @@ def create(
     cache_dir: str | Path | None = None,
     options: PipelineOptions | None = None,
 ) -> BenchmarkRun:
+    """Describe a model and create a benchmark run that can be executed later.
+
+    The returned object does not contact the server until :meth:`BenchmarkRun.run`
+    or :meth:`BenchmarkRun.run_async` is called. ``server_url`` overrides both the
+    public service and the ``TOP_ARENA_SERVER_URL`` environment variable.
+    """
     metadata = BenchmarkMetadata(
         name=name,
         creator=creator,

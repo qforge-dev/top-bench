@@ -38,6 +38,8 @@ class BenchmarkCase:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkResult:
+    """Final server result returned after every case has been scored."""
+
     run_id: str
     status: str
     total_cases: int
@@ -56,6 +58,8 @@ class RunSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class PipelineOptions:
+    """Concurrency, queue, polling, and timeout controls for a local run."""
+
     download_concurrency: int = 4
     run_concurrency: int = 1
     upload_concurrency: int = 4

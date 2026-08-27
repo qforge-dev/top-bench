@@ -1,44 +1,44 @@
-# Top Arena on `bestia`
+# Top Arena production and delivery
 
-This deployment keeps the first production setup deliberately small:
+The production deployment is intentionally small and observable:
 
-- one systemd-managed Python process at `127.0.0.1:8910`;
-- the system PostgreSQL instance, reachable only through its Unix socket;
-- the existing EC2 instance role for S3 access;
-- a separate Caddy site for `https://top-arena.54-90-214-165.sslip.io`.
+- one systemd-managed Python process on `127.0.0.1:8910`;
+- the system PostgreSQL instance over its local Unix socket;
+- the EC2 instance role for access to S3 audio objects;
+- Caddy for HTTPS and reverse proxying;
+- `https://top-arena.labqoat.com` as the canonical public URL;
+- GitHub Actions for verified web deployments and PyPI releases.
 
-The existing Caddy site and its port-8900 upstream are not replaced. Docker is
-not required on `bestia`; the Dockerfile is available for reproducible builds
-elsewhere.
+Docker is not required on the current host. The leaderboard Dockerfile remains useful
+for reproducible builds on other infrastructure.
 
-## MVP durability boundary
+## Durability boundary
 
-The public hostname currently encodes `bestia`'s automatically assigned public
-IPv4 address. The instance has no Elastic IP, so an EC2 stop/start changes the
-address and requires updating the sslip.io hostname, Caddy site, server environment,
-and SDK default together. Associating an Elastic IP or a real DNS name is the next
-step before treating this URL as permanent.
+The current EC2 instance does not have an Elastic IP. The DNS name is stable for users,
+but an EC2 stop/start can change the origin IPv4 address. If that happens, update the
+Cloudflare `top-arena` A record and the GitHub `production` environment's `DEPLOY_HOST`
+variable before deploying again.
 
-PostgreSQL also runs on `bestia`'s root EBS volume for this deliberately small
-launch. S3 audio has bucket versioning, but leaderboard metadata needs its own
-backup policy before production use; an RDS migration can wait until the workload
-justifies another service.
+PostgreSQL currently runs on the instance's root EBS volume. S3 audio has bucket
+versioning, but leaderboard metadata still needs an independent database backup policy
+before this should be treated as a high-availability service. No PostgreSQL TCP port
+needs to be public.
 
 ## One-time host setup
 
-Ubuntu 26.04's system packages are sufficient. Install PostgreSQL and the audio
-runtime library, then verify the installed PostgreSQL major version (18 is the
-expected Ubuntu 26.04 default):
+Ubuntu 26.04's system packages provide PostgreSQL and the audio runtime library. Verify
+the PostgreSQL major version after installation (18 is the expected Ubuntu 26.04
+default):
 
 ```console
 sudo apt update
-sudo apt install --yes postgresql libsndfile1
+sudo apt install --yes postgresql libsndfile1 rsync
 psql --version
 sudo systemctl enable --now postgresql
 ```
 
-Use local peer authentication instead of introducing a database password. The
-database role matches the service's `ubuntu` operating-system user:
+Use local peer authentication. The database role matches the service's `ubuntu`
+operating-system user:
 
 ```console
 sudo -u postgres psql --set=ON_ERROR_STOP=1 <<'SQL'
@@ -54,23 +54,25 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'top_arena')\gexec
 SQL
 ```
 
-No PostgreSQL TCP port needs to be opened.
+Install uv and create the deployment directory:
 
-## Install the locked application
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+/home/ubuntu/.local/bin/uv python install 3.14
+install -d -o ubuntu -g ubuntu -m 0755 /home/ubuntu/top-bench
+```
 
-The checkout is expected at `/home/ubuntu/top-bench`, with `uv` already at
-`/home/ubuntu/.local/bin/uv`:
+The first source copy must contain `pyproject.toml`, `uv.lock`, `apps/leaderboard`,
+`packages/top-arena`, and `infra`. Then install the production environment and service:
 
 ```console
 cd /home/ubuntu/top-bench
-/home/ubuntu/.local/bin/uv python install 3.14
-/home/ubuntu/.local/bin/uv sync --locked --no-dev --package top-arena-leaderboard --python 3.14
-```
+/home/ubuntu/.local/bin/uv sync \
+  --locked \
+  --no-dev \
+  --package top-arena-leaderboard \
+  --python 3.14
 
-Install the environment template and service. The environment file contains no
-AWS keys: boto3 obtains short-lived credentials from the EC2 instance role.
-
-```console
 sudo install -d -o root -g ubuntu -m 0750 /etc/top-arena
 sudo install -o root -g ubuntu -m 0640 \
   infra/systemd/top-arena.env.example /etc/top-arena/top-arena.env
@@ -80,60 +82,136 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now top-arena
 ```
 
-The service applies the checked-in Alembic migration before each start. Verify
-the private upstream before exposing it through Caddy:
+The environment file contains no AWS keys. boto3 receives short-lived credentials from
+the instance role. Treat `/etc/top-arena/top-arena.env` as host configuration after the
+first install; automated deployments do not overwrite it.
+
+Verify the private upstream before adding public routing:
 
 ```console
 systemctl status top-arena --no-pager
-curl --fail --show-error http://127.0.0.1:8910/
+curl --fail --show-error http://127.0.0.1:8910/health
 journalctl -u top-arena -n 100 --no-pager
 ```
 
-## Add the independent Caddy site
+## Cloudflare and Caddy
 
-First compare the checked-in bestia configuration with the live file, then make
-a recoverable copy. The checked-in file preserves the existing IP site and adds
-only an import for independent files under `/etc/caddy/conf.d/`:
+Create this record in the `labqoat.com` Cloudflare zone:
+
+| Type | Name | Target | Proxy |
+| --- | --- | --- | --- |
+| A | `top-arena` | production origin IPv4 | Proxied |
+
+Use Cloudflare SSL/TLS mode **Full (strict)**. Ports 80 and 443 must reach Caddy on the
+origin. SSH remains separate and is used only by the deployment workflow.
+
+The base Caddyfile keeps the pre-existing port-8900 application and imports independent
+files from `/etc/caddy/conf.d/`. Install the Top Arena site without replacing that
+application:
 
 ```console
 sudo cp --archive /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-top-arena
 sudo install -D -o root -g root -m 0644 \
   infra/caddy/top-arena.caddy /etc/caddy/conf.d/top-arena.caddy
-diff --unified /etc/caddy/Caddyfile infra/caddy/Caddyfile.bestia || true
-sudo install -o root -g root -m 0644 \
-  infra/caddy/Caddyfile.bestia /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl reload caddy
-curl --fail --show-error https://top-arena.54-90-214-165.sslip.io/
+sudo systemctl restart caddy
+curl --fail --show-error https://top-arena.labqoat.com/health
 ```
 
-Caddy will obtain TLS for the sslip.io hostname while continuing to serve the
-existing IP site. Port 8910 remains loopback-only.
+The Caddy site temporarily retains the old `sslip.io` hostname as a compatibility
+alias. New documentation and package builds use only the canonical `labqoat.com` URL.
 
-## Updates and rollback
+## GitHub web deployment
 
-For an update, sync the new lock before restarting:
+`.github/workflows/deploy-web.yml` runs after relevant pushes to `main` and can also be
+started manually. Its path filter includes:
+
+- `apps/leaderboard/**`;
+- `infra/**`;
+- root `pyproject.toml` and `uv.lock`;
+- the deployment workflow itself.
+
+Before touching production, the workflow provisions PostgreSQL, runs the Python checks,
+applies and verifies migrations, runs leaderboard tests, and runs the browserless Node
+UI tests. The deployment job then uploads only the server workspace, SDK workspace, and
+infrastructure files. On the host, [`deploy.sh`](deploy.sh) synchronizes those scoped
+directories, installs the locked environment, applies migrations, installs and
+validates the systemd/Caddy configuration, restarts the service, and checks `/health`.
+Concurrent deployments are serialized and are never cancelled halfway through.
+
+Create a GitHub environment named `production` with these values:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Variable | `DEPLOY_HOST` | Origin IPv4 or SSH hostname. |
+| Variable | `DEPLOY_USER` | `ubuntu` |
+| Variable | `DEPLOY_PATH` | `/home/ubuntu/top-bench` |
+| Secret | `DEPLOY_SSH_KEY` | Private half of a dedicated Ed25519 deployment key. |
+| Secret | `DEPLOY_KNOWN_HOSTS` | Pinned `known_hosts` entry for `DEPLOY_HOST`. |
+
+Only the dedicated public key belongs in `/home/ubuntu/.ssh/authorized_keys`. Do not
+reuse a personal SSH key. The deployment user needs passwordless sudo only for the
+specific host operations already required by the current installation: installing
+systemd/Caddy files, validating and reloading Caddy, and restarting `top-arena`.
+
+The workflow's public environment URL is `https://top-arena.labqoat.com`. A green run
+means both the private origin health check and the public Cloudflare URL succeeded.
+
+## PyPI trusted publishing
+
+`.github/workflows/publish-package.yml` runs only when `packages/top-arena/**` or the
+publishing workflow changes on `main`. It builds in a job with read-only repository
+permissions, validates distribution metadata, installs the wheel into a clean virtual
+environment, and passes the artifacts to a separate OIDC-enabled publish job.
+
+Because `top-arena` does not yet exist on PyPI, configure a pending trusted publisher in
+the PyPI account that should own the project:
+
+| PyPI field | Value |
+| --- | --- |
+| PyPI project name | `top-arena` |
+| Owner | `qforge-dev` |
+| Repository | `top-bench` |
+| Workflow | `publish-package.yml` |
+| Environment | `pypi` |
+
+Create the matching GitHub environment named `pypi`. No GitHub secret is required for
+publishing. PyPI validates GitHub's short-lived OIDC identity and records attestations
+for the uploaded wheel and source distribution.
+
+Each workflow run turns the declared base version into a unique PEP 440 post-release,
+for example `0.2.0.post17`. This makes every SDK change publishable without committing
+an automated version bump back to the repository. Bump the base version manually when
+the package's compatibility line changes.
+
+## Verification and rollback
+
+Operational checks:
 
 ```console
-cd /home/ubuntu/top-bench
-/home/ubuntu/.local/bin/uv sync --locked --no-dev --package top-arena-leaderboard --python 3.14
-sudo systemctl restart top-arena
+curl --fail --show-error https://top-arena.labqoat.com/health
+systemctl status top-arena --no-pager
+journalctl -u top-arena -n 100 --no-pager
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-To roll back only the public routing, restore the saved Caddyfile, validate it,
-and reload Caddy. The old port-8900 service was never changed:
+For an application rollback, revert the offending commit on `main`. The resulting push
+passes through the same verification and deployment path, avoiding untracked changes
+on the server. Database migrations are forward-only; review migration compatibility
+before reverting code that depended on a schema change.
+
+To remove only the public Top Arena route, restore the saved base Caddyfile or remove
+the independent site file, validate, and restart Caddy. This does not affect PostgreSQL,
+S3 objects, the service checkout, or the existing port-8900 application:
 
 ```console
 sudo cp --archive /etc/caddy/Caddyfile.before-top-arena /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl reload caddy
+sudo systemctl restart caddy
 ```
 
-Stopping the new app is equally contained:
+Stop the application without deleting data with:
 
 ```console
 sudo systemctl disable --now top-arena
 ```
-
-These rollback steps retain the PostgreSQL database, S3 objects, checkout, and
-environment file so the service can be restored without data loss.
