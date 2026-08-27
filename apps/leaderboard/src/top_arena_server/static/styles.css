@@ -699,17 +699,20 @@ td > strong {
   font-size: 0.82rem;
 }
 
-.model-link {
+.model-link,
+.amp-link {
   color: inherit;
-  text-decoration-color: transparent;
+  text-decoration-line: underline;
+  text-decoration-color: rgb(152 164 173 / 42%);
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
   transition: color 130ms ease, text-decoration-color 130ms ease;
 }
 
-.model-link:hover {
+.model-link:hover,
+.amp-link:hover {
   color: var(--accent-strong);
-  text-decoration-color: rgb(183 243 74 / 55%);
+  text-decoration-color: var(--accent);
 }
 
 .model-cell > span,

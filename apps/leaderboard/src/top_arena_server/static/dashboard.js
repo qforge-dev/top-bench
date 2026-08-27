@@ -194,7 +194,11 @@
   function ampCell(run) {
     const cell = createElement("td");
     cell.dataset.label = "Amp";
-    cell.append(createElement("strong", "", run.ampName));
+    const heading = createElement("strong");
+    const link = createElement("a", "amp-link", run.ampName);
+    link.href = `/amps/${encodeURIComponent(run.ampId)}`;
+    heading.append(link);
+    cell.append(heading);
     return cell;
   }
 

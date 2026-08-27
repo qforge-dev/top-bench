@@ -137,14 +137,25 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260827-compact-amp-params" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260827-amp-pages" in dashboard_response.text
             assert ">Amp params <" in dashboard_response.text
             assert (
                 'data-label="Amp parameters" class="numeric-cell">6</td>' in dashboard_response.text
             )
+            assert 'class="amp-link" href="/amps/demo-bias-x"' in dashboard_response.text
             assert 'class="hero"' not in dashboard_response.text
             assert 'class="hero-stats"' not in dashboard_response.text
             assert "Hear less hype" not in dashboard_response.text
+
+            amp_page_response = await client.get("/amps/demo-bias-x")
+            amp_page_response.raise_for_status()
+            assert "Demo Bias-X results · Top Arena" in amp_page_response.text
+            assert "lifecycle-model" in amp_page_response.text
+            assert 'data-amp-id="demo-bias-x"' in amp_page_response.text
+            assert "/static/amp_detail.js?v=20260827-amp-pages" in amp_page_response.text
+            assert 'data-chart-mode="positions"' in amp_page_response.text
+            assert 'data-chart-mode="budget"' in amp_page_response.text
+            assert (await client.get("/amps/not-a-real-amp")).status_code == 404
 
             leaderboard_response = await client.get("/api/v1/leaderboard")
             leaderboard_response.raise_for_status()

@@ -34,8 +34,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css?v=20260827-compact-amp-params">
-    <script defer src="/static/dashboard.js?v=20260827-compact-amp-params"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260827-amp-pages">
+    <script defer src="/static/dashboard.js?v=20260827-amp-pages"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -177,7 +177,7 @@
                     <span>by {{ run.creator|default("Anonymous", true) }}</span>
                   </td>
                   <td data-label="Amp">
-                    <strong>{{ run.amp_name|default(run.amp_id|default("Unknown amp", true), true) }}</strong>
+                    <strong><a class="amp-link" href="/amps/{{ run.amp_id }}">{{ run.amp_name|default(run.amp_id|default("Unknown amp", true), true) }}</a></strong>
                   </td>
                   <td data-label="Progress">
                     <span class="status status-{{ status|lower|replace('_', '-') }}">{{ status|replace('_', ' ')|title }}</span>

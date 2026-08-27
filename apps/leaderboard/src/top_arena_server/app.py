@@ -795,6 +795,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run has no cases")
         return RedirectResponse(_case_page_url(run_id, locations[0].case_id))
 
+    @app.get("/amps/{amp_id}", response_class=HTMLResponse, include_in_schema=False)
+    async def amp_detail(request: Request, amp_id: str) -> Response:
+        async with database.session() as session:
+            amp = await session.get(Amp, amp_id)
+        if amp is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "amp not found")
+        runs = await _leaderboard_runs(services, amp_id=amp_id)
+        serialized_runs = [run.model_dump(mode="json") for run in runs]
+        serialized_amp = AmpResponse.model_validate(amp).model_dump(mode="json")
+        return templates.TemplateResponse(
+            request=request,
+            name="amp_detail.html",
+            context={
+                "amp": serialized_amp,
+                "runs": serialized_runs,
+                "amp_page": {"amp": serialized_amp, "runs": serialized_runs},
+            },
+        )
+
     @app.get(
         "/runs/{run_id}/cases/{case_id}",
         response_class=HTMLResponse,

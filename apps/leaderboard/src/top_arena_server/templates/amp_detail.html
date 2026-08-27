@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0e13">
+    <title>{{ amp.name }} results · Top Arena</title>
+    <meta name="description" content="Compare every benchmarked model for {{ amp.name }}.">
+    <link rel="stylesheet" href="/static/styles.css?v=20260827-amp-pages">
+    <link rel="stylesheet" href="/static/amp_detail.css?v=20260827-amp-pages">
+    <script defer src="/static/amp_detail.js?v=20260827-amp-pages"></script>
+  </head>
+  <body class="amp-page">
+    <a class="skip-link" href="#amp-models">Skip to model runs</a>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Top Arena home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <path d="M6 25V11M12 29V7M18 24V12M24 27V9M30 22V14"></path>
+        </svg>
+        <span>TOP <b>ARENA</b></span>
+      </a>
+      <a class="back-link" href="/"><span aria-hidden="true">←</span> Leaderboard</a>
+    </header>
+
+    <main class="amp-main" data-amp-id="{{ amp.id }}">
+      <header class="amp-heading">
+        <div>
+          <p class="amp-eyebrow">Amp results</p>
+          <h1>{{ amp.name }}</h1>
+        </div>
+        <p class="amp-meta">
+          <span>{{ amp.control_names|length }} amp parameters</span>
+          <span id="amp-case-count">— cases</span>
+          <span id="amp-run-count">{{ runs|length }} model runs</span>
+        </p>
+      </header>
+
+      <section class="amp-section" aria-labelledby="standings-title">
+        <header class="amp-section-heading">
+          <div>
+            <p class="amp-section-label">Overall ranking</p>
+            <h2 id="standings-title">Amp standings</h2>
+          </div>
+          <p>Mean ESR · lower is better</p>
+        </header>
+        <ol id="amp-standings" class="amp-standings"></ol>
+        <p id="standings-empty" class="amp-empty" hidden>No completed scores are available yet.</p>
+      </section>
+
+      <section class="amp-section comparison-section" aria-labelledby="comparison-title">
+        <header class="amp-section-heading">
+          <div>
+            <p class="amp-section-label">Efficiency frontier</p>
+            <h2 id="comparison-title">Quality vs speed</h2>
+          </div>
+          <p id="comparison-guidance">Further right is faster · higher is lower error</p>
+        </header>
+        <div class="comparison-tabs" role="tablist" aria-label="Chart comparison">
+          <button type="button" role="tab" data-chart-mode="speed" aria-selected="true" tabindex="0">Speed</button>
+          <button type="button" role="tab" data-chart-mode="positions" aria-selected="false" tabindex="-1">Positions</button>
+          <button type="button" role="tab" data-chart-mode="budget" aria-selected="false" tabindex="-1">Recording budget</button>
+        </div>
+        <div class="amp-chart-shell">
+          <svg id="amp-comparison-chart" viewBox="0 0 1120 430" role="img" aria-labelledby="comparison-title comparison-description"></svg>
+          <p id="comparison-description" class="sr-only">Model runs compared by mean ESR and speed.</p>
+          <div id="amp-chart-tooltip" class="chart-tooltip" role="tooltip" hidden></div>
+        </div>
+      </section>
+
+      <section id="amp-models" class="amp-section" aria-labelledby="models-title">
+        <header class="amp-model-heading">
+          <div>
+            <p class="amp-section-label">All submissions</p>
+            <h2 id="models-title">Model runs</h2>
+          </div>
+          <label class="amp-model-search">
+            <span class="sr-only">Find a model run</span>
+            <input id="amp-model-filter" type="search" placeholder="Find a model run" autocomplete="off">
+          </label>
+        </header>
+        <div class="amp-table-frame">
+          <table class="amp-model-table">
+            <caption class="sr-only">All benchmarked models for {{ amp.name }}. Select a model to inspect its aggregate results.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Model</th>
+                <th scope="col" class="numeric-cell">ESR</th>
+                <th scope="col" class="numeric-cell">Weighted ESR</th>
+                <th scope="col" class="numeric-cell">MRSTFT</th>
+                <th scope="col" class="numeric-cell">Realtime</th>
+                <th scope="col" class="numeric-cell">Positions</th>
+                <th scope="col" class="numeric-cell">Budget</th>
+              </tr>
+            </thead>
+            <tbody id="amp-model-body"></tbody>
+          </table>
+        </div>
+        <p id="model-filter-empty" class="amp-empty" hidden>No model runs match this search.</p>
+      </section>
+
+      <section id="selected-model" class="amp-section selected-model" aria-labelledby="selected-model-title">
+        <header class="amp-section-heading">
+          <div>
+            <p class="amp-section-label">Selected model</p>
+            <h2 id="selected-model-title">Benchmark profile</h2>
+          </div>
+          <a id="selected-model-link" class="detail-link" href="#">Open full run <span aria-hidden="true">→</span></a>
+        </header>
+        <div id="selected-summary" class="selected-summary" aria-live="polite"></div>
+        <div class="profile-heading">
+          <span>Metric</span>
+          <span class="profile-legend"><i></i> Model <b></b> NAM-A2-FULL</span>
+        </div>
+        <div id="selected-profile" class="selected-profile"></div>
+      </section>
+
+      <section id="amp-empty-state" class="amp-section amp-page-empty" hidden>
+        <p class="amp-section-label">No submissions</p>
+        <h2>This amp has no benchmark runs yet</h2>
+        <p>Completed and in-progress submissions will appear here automatically.</p>
+      </section>
+    </main>
+
+    <script id="amp-initial-data" type="application/json">{{ amp_page|tojson }}</script>
+  </body>
+</html>

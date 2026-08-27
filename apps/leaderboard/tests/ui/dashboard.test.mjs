@@ -100,6 +100,10 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.equal(selectedRow.querySelector("progress"), null);
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
   assert.equal(selectedRow.querySelector('td[data-label="Amp parameters"]').textContent, "6");
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Amp"] .amp-link').getAttribute("href"),
+    "/amps/pg-clean",
+  );
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
   const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
   assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);
