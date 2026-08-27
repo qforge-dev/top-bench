@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import weakref
 from collections.abc import Sequence
 from contextlib import suppress
 from typing import Any, cast
@@ -35,6 +36,9 @@ class ScoringService:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
         self._queued: set[str] = set()
+        self._finalization_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
 
     async def start(self) -> None:
         async with self._database.session() as session:
@@ -78,7 +82,11 @@ class ScoringService:
             await self._queue.put(run_case_id)
 
     async def finalize_if_ready(self, run_id: str) -> bool:
-        async with self._database.session() as session:
+        # PostgreSQL serializes these transactions with FOR UPDATE. SQLite ignores
+        # that clause, so its scoring workers also need a process-local per-run lock
+        # to prevent a stale progress write from landing after terminal completion.
+        lock = self._finalization_locks.setdefault(run_id, asyncio.Lock())
+        async with lock, self._database.session() as session:
             run = await session.scalar(
                 select(BenchmarkRun).where(BenchmarkRun.id == run_id).with_for_update()
             )
