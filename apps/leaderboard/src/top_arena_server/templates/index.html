@@ -34,8 +34,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css?v=20260827-parameter-count">
-    <script defer src="/static/dashboard.js?v=20260827-parameter-count"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260827-amp-control-count">
+    <script defer src="/static/dashboard.js?v=20260827-amp-control-count"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -146,7 +146,7 @@
                   <button class="sort-button" type="button" data-sort="positions">Positions <span aria-hidden="true">↕</span></button>
                 </th>
                 <th class="parameter-column" scope="col" aria-sort="none">
-                  <button class="sort-button" type="button" data-sort="parameters">Parameters <span aria-hidden="true">↕</span></button>
+                  <button class="sort-button" type="button" data-sort="ampParameters">Amp parameters <span aria-hidden="true">↕</span></button>
                 </th>
                 <th scope="col" aria-sort="none">
                   <button class="sort-button" type="button" data-sort="realtime">Realtime <span aria-hidden="true">↕</span></button>
@@ -184,7 +184,7 @@
                     <span class="progress-count">{{ completed }}/{{ total }}</span>
                   </td>
                   <td data-label="Positions" class="numeric-cell">{{ run.unique_positions_used|default("—", true) }}</td>
-                  <td data-label="Parameters" class="numeric-cell">{{ integer(run.parameter_count) }}</td>
+                  <td data-label="Amp parameters" class="numeric-cell">{{ integer(run.amp_control_count) }}</td>
                   <td data-label="Realtime" class="numeric-cell">
                     {% if realtime.mean|default(none) is not none %}{{ number(realtime.mean, 2) }}×{% else %}—{% endif %}
                   </td>

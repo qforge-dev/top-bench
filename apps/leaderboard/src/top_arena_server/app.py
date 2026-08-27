@@ -149,6 +149,7 @@ def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunRespon
         amp_id=run.amp_id,
         amp_name=run.amp.name,
         amp_type=run.amp.amp_type,
+        amp_control_count=len(run.amp.control_names),
         unique_positions_used=run.unique_positions_used,
         audio_duration_sum=run.audio_duration_sum,
         turns=run.turns,

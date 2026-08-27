@@ -14,6 +14,7 @@ function run(id, name, ampId, ampName) {
     amp_id: ampId,
     amp_name: ampName,
     amp_type: "guitar",
+    amp_control_count: ampId === "pg-clean" ? 6 : 7,
     unique_positions_used: 5,
     audio_duration_sum: 250,
     turns: 1,
@@ -98,7 +99,7 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.equal(selectedRow.querySelector(".model-metadata"), null);
   assert.equal(selectedRow.querySelector("progress"), null);
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
-  assert.equal(selectedRow.querySelector('td[data-label="Parameters"]').textContent, "1,000");
+  assert.equal(selectedRow.querySelector('td[data-label="Amp parameters"]').textContent, "6");
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
   const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
   assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);

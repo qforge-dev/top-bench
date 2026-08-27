@@ -93,6 +93,7 @@ class RunResponse(ApiModel):
     amp_id: str
     amp_name: str
     amp_type: str
+    amp_control_count: int
     unique_positions_used: int
     audio_duration_sum: float
     turns: int

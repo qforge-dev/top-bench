@@ -137,10 +137,10 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260827-parameter-count" in dashboard_response.text
-            assert ">Parameters <" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260827-amp-control-count" in dashboard_response.text
+            assert ">Amp parameters <" in dashboard_response.text
             assert (
-                'data-label="Parameters" class="numeric-cell">40,000</td>'
+                'data-label="Amp parameters" class="numeric-cell">6</td>'
                 in dashboard_response.text
             )
             assert 'class="hero"' not in dashboard_response.text
@@ -151,6 +151,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             leaderboard_response.raise_for_status()
             leaderboard = leaderboard_response.json()
             assert leaderboard["runs"][0]["cases"] == []
+            assert leaderboard["runs"][0]["amp_control_count"] == 6
             assert [(amp["id"], amp["name"]) for amp in leaderboard["amps"]] == [
                 ("demo-bias-x", "Demo Bias-X"),
                 ("pg-clean", "PG Clean"),
