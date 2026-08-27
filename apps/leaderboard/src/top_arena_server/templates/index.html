@@ -35,7 +35,7 @@
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
     <link rel="stylesheet" href="/static/styles.css?v=20260827-amp-pages">
-    <script defer src="/static/dashboard.js?v=20260827-control-coverage"></script>
+    <script defer src="/static/dashboard.js?v=20260827-positions-per-control"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -56,15 +56,15 @@
     <main>
       <section class="chart-panel panel" aria-labelledby="pareto-title">
         <div class="section-heading">
-          <h1 id="pareto-title">ESR vs. control-position coverage</h1>
+          <h1 id="pareto-title">ESR vs. positions per control</h1>
           <div class="chart-legend" aria-label="Chart legend">
             <span><i class="legend-dot" aria-hidden="true"></i> Run</span>
             <span><i class="legend-line" aria-hidden="true"></i> Pareto</span>
           </div>
         </div>
         <p id="pareto-description" class="sr-only">
-          Mean ESR on a logarithmic scale against unique training positions multiplied by
-          the amp's knobs and switches. Lower ESR and higher control-position coverage are better.
+          Mean ESR on a logarithmic scale against unique training positions divided by
+          the amp's knobs and switches. Lower ESR and fewer positions per control are better.
         </p>
         <div class="chart-shell">
           <svg

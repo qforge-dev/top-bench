@@ -83,9 +83,9 @@
       ampType: text(firstValue(source.amp_type, source.ampType), "Unspecified"),
       ampParameterCount,
       positions,
-      controlPositionCoverage: positions === null || ampParameterCount === null
+      positionsPerControl: positions === null || ampParameterCount === null || ampParameterCount <= 0
         ? null
-        : positions * ampParameterCount,
+        : positions / ampParameterCount,
       audioDuration: finite(firstValue(source.audio_duration_sum, source.audioDurationSum)),
       turns: finite(source.turns),
       trainingTime: finite(firstValue(source.training_time, source.trainingTime)),
@@ -393,7 +393,7 @@
 
   function paretoFrontier(points) {
     const sorted = [...points].sort((left, right) => (
-      right.controlPositionCoverage - left.controlPositionCoverage
+      left.positionsPerControl - right.positionsPerControl
       || left.esr.mean - right.esr.mean
     ));
     const frontier = [];
@@ -404,14 +404,14 @@
         bestScore = point.esr.mean;
       }
     }
-    return frontier.reverse();
+    return frontier;
   }
 
   function shorten(value, length = 19) {
     return value.length > length ? `${value.slice(0, length - 1)}…` : value;
   }
 
-  function coverageTickStep(maximum) {
+  function positionRatioTickStep(maximum) {
     const rough = Math.max(1, maximum) / 5;
     const magnitude = 10 ** Math.floor(Math.log10(rough));
     const residual = rough / magnitude;
@@ -428,8 +428,8 @@
     elements.tooltip.replaceChildren(
       createElement("strong", "", run.name),
       document.createTextNode(
-        `ESR ${formatScore(run.esr.mean)} \u00b7 ${formatScore(run.controlPositionCoverage)} control positions `
-        + `(${formatScore(run.positions)} positions × ${formatInteger(run.ampParameterCount)} knobs/switches)`,
+        `ESR ${formatScore(run.esr.mean)} \u00b7 ${formatScore(run.positionsPerControl)} positions per control `
+        + `(${formatScore(run.positions)} positions ÷ ${formatInteger(run.ampParameterCount)} knobs/switches)`,
       ),
     );
     elements.tooltip.style.left = `${chartBounds.left - shellBounds.left + point.x * scaleX}px`;
@@ -446,7 +446,7 @@
     chart.replaceChildren();
     hideTooltip();
     const points = runs.filter((run) => (
-      run.controlPositionCoverage !== null && run.esr.mean !== null && run.esr.mean > 0
+      run.positionsPerControl !== null && run.esr.mean !== null && run.esr.mean > 0
     ));
 
     if (points.length === 0) {
@@ -461,10 +461,10 @@
     const margin = { top: 35, right: 44, bottom: 62, left: 102 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
-    const maxX = Math.max(...points.map((run) => run.controlPositionCoverage));
+    const maxX = Math.max(...points.map((run) => run.positionsPerControl));
     const minY = Math.min(...points.map((run) => run.esr.mean));
     const maxY = Math.max(...points.map((run) => run.esr.mean));
-    const xStep = coverageTickStep(maxX);
+    const xStep = positionRatioTickStep(maxX);
     const xDomainMax = Math.max(1, Math.ceil((maxX + xStep * 0.3) / xStep) * xStep);
     let yLogMin = Math.floor(Math.log10(minY));
     let yLogMax = Math.ceil(Math.log10(maxY));
@@ -519,14 +519,14 @@
     chart.append(grid);
 
     const xTitle = createSvg("text", { class: "axis-title", x: margin.left + innerWidth / 2, y: height - 14, "text-anchor": "middle" });
-    xTitle.textContent = "Control-position coverage (positions × knobs/switches · higher is better)";
+    xTitle.textContent = "Training positions per knob/switch (positions ÷ controls · lower is better)";
     const yTitle = createSvg("text", { class: "axis-title", transform: `translate(21 ${margin.top + innerHeight / 2}) rotate(-90)`, "text-anchor": "middle" });
     yTitle.textContent = "Mean ESR (log scale · lower is better)";
     chart.append(xTitle, yTitle);
 
     const frontier = paretoFrontier(points);
     const frontierCoordinates = frontier.map((run) => ({
-      x: xScale(run.controlPositionCoverage),
+      x: xScale(run.positionsPerControl),
       y: yScale(run.esr.mean),
     }));
     const frontierPath = frontierCoordinates.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
@@ -536,12 +536,12 @@
       createSvg("path", { class: "frontier-line", d: frontierPath, "aria-hidden": "true" }),
     );
 
-    const frontierValues = new Set(frontier.map((run) => `${run.controlPositionCoverage}:${run.esr.mean}`));
+    const frontierValues = new Set(frontier.map((run) => `${run.positionsPerControl}:${run.esr.mean}`));
     const pointLayer = createSvg("g");
     const shouldLabelAll = points.length <= 12;
     for (const run of points) {
-      const position = { x: xScale(run.controlPositionCoverage), y: yScale(run.esr.mean) };
-      const onFrontier = frontierValues.has(`${run.controlPositionCoverage}:${run.esr.mean}`);
+      const position = { x: xScale(run.positionsPerControl), y: yScale(run.esr.mean) };
+      const onFrontier = frontierValues.has(`${run.positionsPerControl}:${run.esr.mean}`);
       const circle = createSvg("circle", {
         class: `run-point${onFrontier ? " on-frontier" : ""}`,
         cx: position.x,
@@ -550,15 +550,15 @@
         tabindex: 0,
         role: "img",
         "aria-label": `${run.name}: mean ESR ${formatScore(run.esr.mean)}, `
-          + `${formatScore(run.controlPositionCoverage)} control positions from `
-          + `${formatScore(run.positions)} unique positions across `
+          + `${formatScore(run.positionsPerControl)} positions per knob or switch from `
+          + `${formatScore(run.positions)} unique positions divided by `
           + `${formatInteger(run.ampParameterCount)} knobs and switches`
           + `${onFrontier ? ", on the Pareto frontier" : ""}`,
       });
       const nativeTitle = createSvg("title");
       nativeTitle.textContent = `${run.name} — ESR ${formatScore(run.esr.mean)}, `
-        + `${formatScore(run.controlPositionCoverage)} control positions `
-        + `(${formatScore(run.positions)} × ${formatInteger(run.ampParameterCount)})`;
+        + `${formatScore(run.positionsPerControl)} positions per control `
+        + `(${formatScore(run.positions)} ÷ ${formatInteger(run.ampParameterCount)})`;
       circle.append(nativeTitle);
       circle.addEventListener("mouseenter", () => showTooltip(run, position));
       circle.addEventListener("focus", () => showTooltip(run, position));

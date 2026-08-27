@@ -110,7 +110,7 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.match(esrCell.textContent, /Model 20\.0% lower/);
 });
 
-test("Pareto chart plots control-position coverage against ESR on a logarithmic scale", async () => {
+test("Pareto chart plots positions per control against ESR on a logarithmic scale", async () => {
   const values = [
     ["run-low", 1, 0.001],
     ["run-mid", 5, 0.01],
@@ -149,12 +149,12 @@ test("Pareto chart plots control-position coverage against ESR on a logarithmic 
   );
 });
 
-test("Pareto chart favors more positions across more knobs and switches", async () => {
+test("Pareto chart favors fewer training positions per knob and switch", async () => {
   const values = [
     ["broad", 10, 40, 0.1],
     ["narrow", 5, 39, 0.1],
     ["accurate", 5, 40, 0.05],
-    ["dominated", 10, 30, 0.2],
+    ["dominated", 5, 30, 0.2],
   ];
   const runs = values.map(([id, controls, positions, esr]) => {
     const value = run(id, id, "blackface-63", "Blackface 63");
@@ -178,9 +178,9 @@ test("Pareto chart favors more positions across more knobs and switches", async 
   );
   assert.ok(
     Number(points.get("broad").getAttribute("cx"))
-      > Number(points.get("narrow").getAttribute("cx")),
+      < Number(points.get("narrow").getAttribute("cx")),
   );
-  assert.match(points.get("broad").getAttribute("aria-label"), /400 control positions/);
+  assert.match(points.get("broad").getAttribute("aria-label"), /4 positions per knob or switch/);
   assert.match(points.get("broad").getAttribute("aria-label"), /on the Pareto frontier/);
   assert.doesNotMatch(points.get("narrow").getAttribute("aria-label"), /on the Pareto frontier/);
   assert.match(points.get("accurate").getAttribute("aria-label"), /on the Pareto frontier/);
@@ -188,5 +188,5 @@ test("Pareto chart favors more positions across more knobs and switches", async 
     points.get("dominated").getAttribute("aria-label"),
     /on the Pareto frontier/,
   );
-  assert.match(document.querySelector("#pareto-chart .axis-title").textContent, /higher is better/i);
+  assert.match(document.querySelector("#pareto-chart .axis-title").textContent, /lower is better/i);
 });

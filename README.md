@@ -131,9 +131,9 @@ The [Top Arena web application](https://top-arena.labqoat.com) serves three audi
   audio for individual cases.
 
 The leaderboard shows status, aggregate metrics, speed, and the Pareto frontier for
-mean ESR versus control-position coverage (unique training positions multiplied by the
-amp's knobs and switches). Lower ESR and higher coverage are better. Every model links to
-a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The selected case is
+mean ESR versus positions per control (unique training positions divided by the amp's
+knobs and switches). Lower ESR and fewer positions per control are better. Every model
+links to a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The selected case is
 preserved in copied URLs and browser history, while large audio objects are only loaded
 when playback begins. Interactive API documentation is available at
 [`/docs`](https://top-arena.labqoat.com/docs), and the health endpoint is `/health`.
