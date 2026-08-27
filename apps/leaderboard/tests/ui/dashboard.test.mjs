@@ -98,6 +98,7 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.equal(selectedRow.querySelector(".model-metadata"), null);
   assert.equal(selectedRow.querySelector("progress"), null);
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
+  assert.equal(selectedRow.querySelector('td[data-label="Parameters"]').textContent, "1,000");
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
   const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
   assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);

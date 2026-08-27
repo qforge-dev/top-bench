@@ -170,6 +170,12 @@
     return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
+  function formatInteger(value) {
+    return value === null
+      ? "—"
+      : value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
   function titleCase(value) {
     return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
@@ -246,6 +252,7 @@
       humanWeightedEsr: run.humanWeightedEsr.mean,
       mrstft: run.mrstft.mean,
       name: run.name,
+      parameters: run.parameterCount,
       positions: run.positions,
       rank: ranks.get(run.id) ?? null,
       realtime: run.realtime.mean,
@@ -295,7 +302,7 @@
     if (runs.length === 0) {
       const row = createElement("tr", "empty-row");
       const cell = createElement("td");
-      cell.colSpan = 9;
+      cell.colSpan = 10;
       cell.append(
         createElement("strong", "", state.runs.length ? "No runs match these filters" : "No benchmark runs yet"),
         createElement("span", "", state.runs.length
@@ -317,6 +324,7 @@
         ampCell(run),
         progressCell(run),
         simpleCell("Positions", run.positions === null ? "—" : formatScore(run.positions), "numeric-cell"),
+        simpleCell("Parameters", formatInteger(run.parameterCount), "numeric-cell"),
         simpleCell("Realtime", run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}×`, "numeric-cell"),
         metricCell("ESR", run.esr, run.namA2Full.esr),
         metricCell("Human-weighted ESR", run.humanWeightedEsr, run.namA2Full.humanWeightedEsr),

@@ -579,7 +579,7 @@ h2 {
 
 table {
   width: 100%;
-  min-width: 1300px;
+  min-width: 1400px;
   border-collapse: collapse;
   font-size: 0.78rem;
 }
@@ -669,6 +669,10 @@ tbody tr:last-child td {
 
 .model-column {
   width: 245px;
+}
+
+.parameter-column {
+  min-width: 100px;
 }
 
 .metric-column {
@@ -1209,7 +1213,7 @@ main {
 }
 
 table {
-  min-width: 1080px;
+  min-width: 1180px;
   font-size: 0.72rem;
 }
 
