@@ -464,24 +464,30 @@
   }
 
   function showSequenceStep(index, chunkDuration) {
-    if (!state.sequenceActive || index < 0 || index >= elements.sequenceParts.length) {
-      stopSequence(index >= elements.sequenceParts.length ? "Sequence complete" : "Ready");
+    if (!state.sequenceActive) return;
+    if (elements.sequenceParts.length === 0) {
+      stopSequence("Sequence is unavailable");
       return;
     }
+    const normalizedIndex = ((index % elements.sequenceParts.length)
+      + elements.sequenceParts.length) % elements.sequenceParts.length;
     clearSequenceTimer();
-    const source = SEQUENCE_SOURCES[index];
+    const source = SEQUENCE_SOURCES[normalizedIndex];
     const label = source.label;
-    state.sequenceIndex = index;
+    state.sequenceIndex = normalizedIndex;
     elements.sequenceParts.forEach((part, partIndex) => {
-      const active = partIndex === index;
+      const active = partIndex === normalizedIndex;
       part.classList.toggle("is-active", active);
       if (active) part.setAttribute("aria-current", "true");
       else part.removeAttribute("aria-current");
     });
-    setText(elements.sequenceStatus, `${index + 1} / ${elements.sequenceParts.length} · ${label}`);
+    setText(
+      elements.sequenceStatus,
+      `${normalizedIndex + 1} / ${elements.sequenceParts.length} · ${label}`,
+    );
     state.sequenceTimer = window.setTimeout(() => {
       if (!state.sequenceActive) return;
-      showSequenceStep(index + 1, chunkDuration);
+      showSequenceStep(normalizedIndex + 1, chunkDuration);
     }, chunkDuration * 1_000);
   }
 
@@ -552,6 +558,7 @@
     const source = context.createBufferSource();
     const chunkDuration = buffer.duration / SEQUENCE_SOURCES.length;
     source.buffer = buffer;
+    source.loop = true;
     source.connect(context.destination);
     source.onended = () => {
       if (state.sequenceSource === source && state.sequenceGeneration === generation) {

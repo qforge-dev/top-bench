@@ -10,7 +10,7 @@
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260827-aggregate-layout">
     <link rel="stylesheet" href="/static/case_detail.css?v=20260827-aggregate-layout">
-    <script defer src="/static/case_detail.js?v=20260827-aggregate-layout"></script>
+    <script defer src="/static/case_detail.js?v=20260827-looping-audio"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -132,7 +132,7 @@
               </div>
               <div class="sequence-copy">
                 <span id="sequence-status" role="status" aria-live="polite">Ready</span>
-                <span>Six contiguous sections · source switches without restarting the sound</span>
+                <span>Six contiguous sections · loops continuously · source switches without restarting the sound</span>
               </div>
               <div class="audition-sequence" aria-label="Continuous source-switching audition sequence">
                 <button class="sequence-part" data-sequence-index="0" data-sequence-source="reference" type="button"><span>01</span> BIAS-X</button>
@@ -146,23 +146,23 @@
               <div class="audio-grid">
                 <article class="audio-card">
                   <div class="audio-card-heading"><div><span class="audio-index">01</span><h4>Dry input</h4></div></div>
-                  <audio id="dry-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <audio id="dry-audio" controls loop preload="none">Your browser does not support audio playback.</audio>
                   <a id="dry-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
                 </article>
                 <article class="audio-card audio-card-reference">
                   <div class="audio-card-heading"><div><span class="audio-index">02</span><h4>BIAS-X reference</h4></div></div>
-                  <audio id="reference-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <audio id="reference-audio" controls loop preload="none">Your browser does not support audio playback.</audio>
                   <a id="reference-download" class="audio-download" download>Download WAV <span aria-hidden="true">↗</span></a>
                 </article>
                 <article class="audio-card audio-card-candidate">
                   <div class="audio-card-heading"><div><span class="audio-index">03</span><h4>Model wet</h4></div></div>
-                  <audio id="candidate-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <audio id="candidate-audio" controls loop preload="none">Your browser does not support audio playback.</audio>
                   <p id="candidate-missing" class="audio-missing" hidden>Candidate audio has not been uploaded yet.</p>
                   <a id="candidate-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
                 </article>
                 <article class="audio-card audio-card-nam">
                   <div class="audio-card-heading"><div><span class="audio-index">04</span><h4>NAM-A2-FULL wet</h4></div></div>
-                  <audio id="nam-audio" controls preload="none">Your browser does not support audio playback.</audio>
+                  <audio id="nam-audio" controls loop preload="none">Your browser does not support audio playback.</audio>
                   <p id="nam-missing" class="audio-missing" hidden>NAM-A2-FULL baseline audio is unavailable.</p>
                   <a id="nam-download" class="audio-download" download>Download FLAC <span aria-hidden="true">↗</span></a>
                 </article>

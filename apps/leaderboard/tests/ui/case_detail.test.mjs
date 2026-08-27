@@ -144,10 +144,10 @@ function markup() {
         <button id="next-case" type="button">Next</button>
         <p id="case-label"></p><p id="case-meta"></p><div id="position-chips"></div>
         <div id="case-metrics"></div>
-        <audio id="dry-audio" preload="none"></audio><a id="dry-download"></a>
-        <audio id="reference-audio" preload="none"></audio><a id="reference-download"></a>
-        <audio id="candidate-audio" preload="none"></audio><a id="candidate-download"></a><p id="candidate-missing" hidden></p>
-        <audio id="nam-audio" preload="none"></audio><a id="nam-download"></a><p id="nam-missing" hidden></p>
+        <audio id="dry-audio" loop preload="none"></audio><a id="dry-download"></a>
+        <audio id="reference-audio" loop preload="none"></audio><a id="reference-download"></a>
+        <audio id="candidate-audio" loop preload="none"></audio><a id="candidate-download"></a><p id="candidate-missing" hidden></p>
+        <audio id="nam-audio" loop preload="none"></audio><a id="nam-download"></a><p id="nam-missing" hidden></p>
         <button id="play-sequence" type="button">Play sequence</button>
         <span id="sequence-status" role="status">Ready</span>
         <div class="audition-sequence">
@@ -253,8 +253,14 @@ async function setup({
     createBufferSource() {
       const source = {
         buffer: null,
+        loop: false,
         connect() {},
-        start: (_when, offset = 0) => audioContextEvents.push({ type: "start", offset, buffer: source.buffer }),
+        start: (_when, offset = 0) => audioContextEvents.push({
+          type: "start",
+          offset,
+          buffer: source.buffer,
+          loop: source.loop,
+        }),
         stop: () => audioContextEvents.push({ type: "stop" }),
       };
       return source;
@@ -342,6 +348,10 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.match(document.querySelector("#case-metrics").textContent, /Correlation/);
   assert.match(document.querySelector("#case-metrics").textContent, /0\.8800/);
   assert.equal(document.querySelector("#dry-audio").getAttribute("preload"), "none");
+  assert.equal(document.querySelector("#dry-audio").loop, true);
+  assert.equal(document.querySelector("#reference-audio").loop, true);
+  assert.equal(document.querySelector("#candidate-audio").loop, true);
+  assert.equal(document.querySelector("#nam-audio").loop, true);
   assert.equal(document.querySelector("#dry-audio").getAttribute("src"), "/audio/case-a/dry.wav");
   assert.equal(document.querySelector("#nam-audio").getAttribute("src"), "/audio/case-a/nam.flac");
   assert.equal(document.querySelector("#case-chart").dataset.metric, "esr");
@@ -380,6 +390,7 @@ test("play sequence switches sources across one continuous six-part timeline", a
 
   document.querySelector("#play-sequence").click();
   await waitFor(() => assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1));
+  assert.equal(audioContextEvents.find((event) => event.type === "start").loop, true);
   assert.deepEqual(requests.filter((request) => request.startsWith("/audio/")), [
     "/audio/case-a/reference.wav",
     "/audio/case-a/candidate.wav",
@@ -404,6 +415,16 @@ test("play sequence switches sources across one continuous six-part timeline", a
   assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1);
   assert.equal(document.querySelector('[data-sequence-index="2"]').getAttribute("aria-current"), "true");
   assert.match(document.querySelector("#sequence-status").textContent, /3 \/ 6.*NAM-A2-FULL/);
+
+  timers[2].callback();
+  timers[3].callback();
+  timers[4].callback();
+  assert.equal(document.querySelector('[data-sequence-index="5"]').getAttribute("aria-current"), "true");
+  timers[5].callback();
+  assert.equal(document.querySelector('[data-sequence-index="0"]').getAttribute("aria-current"), "true");
+  assert.match(document.querySelector("#sequence-status").textContent, /1 \/ 6.*BIAS-X/);
+  assert.equal(audioContextEvents.filter((event) => event.type === "start").length, 1);
+  assert.equal(document.querySelector("#play-sequence").textContent, "Stop sequence");
 
   document.querySelector("#next-case").click();
   await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
