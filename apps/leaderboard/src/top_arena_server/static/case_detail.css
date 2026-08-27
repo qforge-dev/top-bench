@@ -1402,18 +1402,36 @@
 }
 
 .aggregate-panel {
-  display: grid;
-  padding: 12px;
+  display: block;
+  padding: 14px;
   margin-top: 12px;
   border-radius: 0;
-  gap: 14px;
-  grid-template-columns: 180px minmax(0, 1fr);
+}
+
+.aggregate-heading {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 
 .aggregate-content {
   display: grid;
   min-width: 0;
+  margin-top: 14px;
   gap: 15px;
+}
+
+.aggregate-group-model,
+.aggregate-group-nam {
+  padding-left: 10px;
+  border-left: 2px solid;
+}
+
+.aggregate-group-model {
+  border-left-color: var(--blue);
+}
+
+.aggregate-group-nam {
+  border-left-color: var(--amber);
 }
 
 .aggregate-group h4 {
@@ -1422,6 +1440,22 @@
   font: 800 0.58rem ui-monospace, "SFMono-Regular", Consolas, monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.aggregate-group-model h4 {
+  color: #82c3ff;
+}
+
+.aggregate-group-nam h4 {
+  color: #ffca7c;
+}
+
+.aggregate-group-model .run-summary dd {
+  color: #dceeff;
+}
+
+.aggregate-group-nam .run-summary dd {
+  color: #ffe1b2;
 }
 
 .aggregate-comparison dd.is-model-better {
@@ -1610,9 +1644,6 @@
     gap: 10px;
   }
 
-  .aggregate-panel {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 600px) {

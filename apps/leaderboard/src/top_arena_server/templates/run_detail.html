@@ -8,9 +8,9 @@
     {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
-    <link rel="stylesheet" href="/static/styles.css?v=20260826-nam-full-aggregates">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260826-nam-full-aggregates">
-    <script defer src="/static/case_detail.js?v=20260826-nam-full-aggregates"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260827-aggregate-layout">
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260827-aggregate-layout">
+    <script defer src="/static/case_detail.js?v=20260827-aggregate-layout"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -192,16 +192,16 @@
             </section>
 
             <section class="aggregate-panel panel" aria-labelledby="aggregate-title">
-              <div>
+              <header class="aggregate-heading">
                 <p class="lab-block-label">Run overview</p>
                 <h3 id="aggregate-title">Aggregate measurements</h3>
-              </div>
+              </header>
               <div class="aggregate-content">
-                <section class="aggregate-group" aria-labelledby="model-aggregate-title">
+                <section class="aggregate-group aggregate-group-model" aria-labelledby="model-aggregate-title">
                   <h4 id="model-aggregate-title">Model aggregate</h4>
                   <dl id="run-summary" class="run-summary" aria-label="Model aggregate statistics"></dl>
                 </section>
-                <section class="aggregate-group" aria-labelledby="nam-aggregate-title">
+                <section class="aggregate-group aggregate-group-nam" aria-labelledby="nam-aggregate-title">
                   <h4 id="nam-aggregate-title">NAM-A2-FULL aggregate</h4>
                   <dl id="nam-run-summary" class="run-summary" aria-label="NAM-A2-FULL aggregate statistics"></dl>
                 </section>
