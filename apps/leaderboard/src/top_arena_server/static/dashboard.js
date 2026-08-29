@@ -567,7 +567,8 @@
       const label = createSvg("text", {
         class: "point-label",
         x: position.x + 10,
-        y: position.y - 10,
+        y: position.y,
+        "dominant-baseline": "middle",
         "aria-hidden": "true",
       });
       label.textContent = shorten(run.name);
