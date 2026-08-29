@@ -133,6 +133,9 @@ test("Pareto chart plots positions per control against ESR on a logarithmic scal
   const { document } = dom.window;
   const points = [...document.querySelectorAll("#pareto-chart .run-point")];
   assert.equal(points.length, 3);
+  const markers = [...document.querySelectorAll("#pareto-chart .run-marker")];
+  assert.equal(markers.length, points.length);
+  assert.ok(markers.every((marker) => marker.querySelector(".point-label")));
   const yByRun = new Map(points.map((point) => [
     point.getAttribute("aria-label").split(":", 1)[0],
     Number(point.getAttribute("cy")),

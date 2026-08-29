@@ -373,10 +373,18 @@ h2 {
 .pareto-chart .point-label {
   fill: #d7dde1;
   font-size: 11px;
+  opacity: 0.16;
   paint-order: stroke;
+  pointer-events: none;
   stroke: var(--panel);
   stroke-width: 4px;
   stroke-linejoin: round;
+  transition: fill 130ms ease, opacity 130ms ease;
+}
+
+.pareto-chart .run-marker:is(:hover, :focus-within) .point-label {
+  fill: #fff;
+  opacity: 1;
 }
 
 .pareto-chart .frontier-area {

@@ -538,10 +538,10 @@
 
     const frontierValues = new Set(frontier.map((run) => `${run.positionsPerControl}:${run.esr.mean}`));
     const pointLayer = createSvg("g");
-    const shouldLabelAll = points.length <= 12;
     for (const run of points) {
       const position = { x: xScale(run.positionsPerControl), y: yScale(run.esr.mean) };
       const onFrontier = frontierValues.has(`${run.positionsPerControl}:${run.esr.mean}`);
+      const marker = createSvg("g", { class: "run-marker" });
       const circle = createSvg("circle", {
         class: `run-point${onFrontier ? " on-frontier" : ""}`,
         cx: position.x,
@@ -564,13 +564,15 @@
       circle.addEventListener("focus", () => showTooltip(run, position));
       circle.addEventListener("mouseleave", hideTooltip);
       circle.addEventListener("blur", hideTooltip);
-      pointLayer.append(circle);
-
-      if (shouldLabelAll || onFrontier) {
-        const label = createSvg("text", { class: "point-label", x: position.x + 10, y: position.y - 10 });
-        label.textContent = shorten(run.name);
-        pointLayer.append(label);
-      }
+      const label = createSvg("text", {
+        class: "point-label",
+        x: position.x + 10,
+        y: position.y - 10,
+        "aria-hidden": "true",
+      });
+      label.textContent = shorten(run.name);
+      marker.append(circle, label);
+      pointLayer.append(marker);
     }
     chart.append(pointLayer);
   }
