@@ -3,6 +3,15 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const POLL_INTERVAL_MS = 2_000;
+  const STARTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    second: "2-digit",
+    timeZoneName: "short",
+    year: "numeric",
+  });
 
   const elements = {
     ampFilter: document.querySelector("#amp-filter"),
@@ -31,6 +40,8 @@
     sortKey: "esr",
     sortDirection: "ascending",
     requestInFlight: false,
+    dataSignature: null,
+    chartSignature: null,
   };
 
   function firstValue(...values) {
@@ -181,6 +192,11 @@
       : value.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
 
+  function formatStartedAt(value) {
+    const date = new Date(value);
+    return value && !Number.isNaN(date.getTime()) ? STARTED_AT_FORMATTER.format(date) : "—";
+  }
+
   function titleCase(value) {
     return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
@@ -219,6 +235,15 @@
   function simpleCell(label, value, className = "") {
     const cell = createElement("td", className, value);
     cell.dataset.label = label;
+    return cell;
+  }
+
+  function startedCell(value) {
+    const cell = createElement("td", "timestamp-cell");
+    cell.dataset.label = "Started";
+    const timestamp = createElement("time", "", formatStartedAt(value));
+    if (value) timestamp.dateTime = value;
+    cell.append(timestamp);
     return cell;
   }
 
@@ -263,8 +288,10 @@
       name: run.name,
       ampParameters: run.ampParameterCount,
       positions: run.positions,
+      positionsPerControl: run.positionsPerControl,
       rank: ranks.get(run.id) ?? null,
       realtime: run.realtime.mean,
+      started: run.createdAt ? Date.parse(run.createdAt) : null,
       status: run.totalCases > 0 ? run.completedCases / run.totalCases : 0,
     };
     return values[key];
@@ -311,7 +338,7 @@
     if (runs.length === 0) {
       const row = createElement("tr", "empty-row");
       const cell = createElement("td");
-      cell.colSpan = 10;
+      cell.colSpan = 12;
       cell.append(
         createElement("strong", "", state.runs.length ? "No runs match these filters" : "No benchmark runs yet"),
         createElement("span", "", state.runs.length
@@ -334,6 +361,12 @@
         progressCell(run),
         simpleCell("Positions", run.positions === null ? "—" : formatScore(run.positions), "numeric-cell"),
         simpleCell("Amp parameters", formatInteger(run.ampParameterCount), "numeric-cell"),
+        simpleCell(
+          "Positions per amp parameter",
+          run.positionsPerControl === null ? "—" : formatScore(run.positionsPerControl),
+          "numeric-cell",
+        ),
+        startedCell(run.createdAt),
         simpleCell("Realtime", run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}×`, "numeric-cell"),
         metricCell("ESR", run.esr, run.namA2Full.esr),
         metricCell("Human-weighted ESR", run.humanWeightedEsr, run.namA2Full.humanWeightedEsr),
@@ -443,11 +476,21 @@
 
   function renderChart(runs) {
     const chart = elements.chart;
-    chart.replaceChildren();
-    hideTooltip();
     const points = runs.filter((run) => (
       run.positionsPerControl !== null && run.esr.mean !== null && run.esr.mean > 0
     ));
+    const signature = JSON.stringify(points.map((run) => [
+      run.id,
+      run.name,
+      run.positionsPerControl,
+      run.positions,
+      run.ampParameterCount,
+      run.esr.mean,
+    ]));
+    if (signature === state.chartSignature) return;
+    state.chartSignature = signature;
+    chart.replaceChildren();
+    hideTooltip();
 
     if (points.length === 0) {
       const placeholder = createSvg("text", { class: "chart-placeholder", x: 480, y: 215, "text-anchor": "middle" });
@@ -624,10 +667,16 @@
         throw new Error(`Leaderboard request failed with ${response.status}`);
       }
       const payload = await response.json();
-      state.runs = runsFromPayload(payload);
-      state.amps = ampsFromPayload(payload, state.runs);
-      updateFilterOptions();
-      render();
+      const runs = runsFromPayload(payload);
+      const amps = ampsFromPayload(payload, runs);
+      const signature = JSON.stringify({ amps, runs });
+      if (signature !== state.dataSignature) {
+        state.runs = runs;
+        state.amps = amps;
+        state.dataSignature = signature;
+        updateFilterOptions();
+        render();
+      }
       setConnection(true);
       if (elements.refreshStatus) {
         elements.refreshStatus.textContent = `Updated ${new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())}`;
@@ -649,7 +698,7 @@
         state.sortDirection = state.sortDirection === "ascending" ? "descending" : "ascending";
       } else {
         state.sortKey = key;
-        state.sortDirection = key === "realtime" ? "descending" : "ascending";
+        state.sortDirection = ["realtime", "started"].includes(key) ? "descending" : "ascending";
       }
       render();
     });
@@ -675,6 +724,7 @@
   const initial = parseInitialData();
   state.runs = initial.runs;
   state.amps = initial.amps;
+  state.dataSignature = JSON.stringify({ amps: state.amps, runs: state.runs });
   updateFilterOptions();
   render();
   window.setInterval(() => void pollLeaderboard(), POLL_INTERVAL_MS);

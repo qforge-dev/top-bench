@@ -8,9 +8,9 @@
     {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
-    <link rel="stylesheet" href="/static/styles.css?v=20260827-aggregate-layout">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260827-aggregate-layout">
-    <script defer src="/static/case_detail.js?v=20260827-looping-audio"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260831-live-details">
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260831-live-details">
+    <script defer src="/static/case_detail.js?v=20260831-live-details"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -22,10 +22,16 @@
         </svg>
         <span>TOP <b>ARENA</b></span>
       </a>
-      <a class="back-link" href="/">
-        <span aria-hidden="true">←</span>
-        Leaderboard
-      </a>
+      <div class="detail-header-actions">
+        <p class="run-started">
+          <span>Benchmark started</span>
+          <time id="run-started"{% if run_started %} datetime="{{ run_started }}"{% endif %}>{{ run_started|default("—", true) }}</time>
+        </p>
+        <a class="back-link" href="/">
+          <span aria-hidden="true">←</span>
+          Leaderboard
+        </a>
+      </div>
     </header>
 
     <main

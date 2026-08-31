@@ -4,6 +4,15 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const REFRESH_INTERVAL_MS = 2_000;
   const TERMINAL_STATUSES = new Set(["completed", "finished", "failed", "error"]);
+  const STARTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    second: "2-digit",
+    timeZoneName: "short",
+    year: "numeric",
+  });
   const SEQUENCE_SOURCES = [
     { label: "BIAS-X" },
     { label: "Model" },
@@ -58,6 +67,7 @@
     runCreator: document.querySelector("#run-creator"),
     runDescription: document.querySelector("#run-description"),
     runName: document.querySelector("#run-name"),
+    runStarted: document.querySelector("#run-started"),
     runStatus: document.querySelector("#run-status"),
     runSummary: document.querySelector("#run-summary"),
     aggregateComparison: document.querySelector("#aggregate-comparison"),
@@ -86,6 +96,9 @@
     sequenceSource: null,
     sequenceTimer: null,
     waveformCache: new Map(),
+    detailSignature: null,
+    caseChartSignature: null,
+    waveformSignature: null,
   };
 
   function finite(value) {
@@ -132,6 +145,11 @@
       maximumFractionDigits: digits,
       minimumFractionDigits: digits,
     });
+  }
+
+  function formatStartedAt(value) {
+    const date = new Date(value);
+    return value && !Number.isNaN(date.getTime()) ? STARTED_AT_FORMATTER.format(date) : "—";
   }
 
   function formatCompact(value) {
@@ -184,6 +202,11 @@
     setText(elements.runCreator, run.creator || "Anonymous");
     setText(elements.runDescription, run.description || "No model description was supplied.");
     setText(elements.runAmp, run.amp_name || run.amp_id || "Unknown amp");
+    if (elements.runStarted) {
+      elements.runStarted.textContent = formatStartedAt(run.created_at);
+      if (run.created_at) elements.runStarted.dateTime = run.created_at;
+      else elements.runStarted.removeAttribute("datetime");
+    }
 
     const status = text(run.status, "queued").toLowerCase();
     if (elements.runStatus) {
@@ -645,11 +668,18 @@
   function renderWaveform(payload) {
     const chart = elements.waveformChart;
     if (!chart) return;
-    chart.replaceChildren();
-    elements.waveformLegend?.replaceChildren();
     const series = Array.isArray(payload?.series)
       ? payload.series.filter((item) => item && Array.isArray(item.values) && item.values.length > 0)
       : [];
+    const signature = JSON.stringify({
+      caseId: state.currentCaseId,
+      duration: finite(payload?.duration_seconds) ?? finite(state.detail?.duration_seconds),
+      series,
+    });
+    if (signature === state.waveformSignature) return;
+    state.waveformSignature = signature;
+    chart.replaceChildren();
+    elements.waveformLegend?.replaceChildren();
     if (series.length === 0) {
       setText(elements.waveformStatus, "Waveform data is unavailable for this case");
       const empty = createSvg("text", { class: "waveform-empty", x: 500, y: 180, "text-anchor": "middle" });
@@ -815,6 +845,14 @@
     const renderedSeries = config.fields
       .map((definition) => ({ definition, values: seriesFor(detail, definition) }))
       .filter((series) => series.values.length > 0);
+    const signature = JSON.stringify({
+      caseId: detail.case_id,
+      duration: detail.duration_seconds,
+      metric: state.metric,
+      series: renderedSeries,
+    });
+    if (signature === state.caseChartSignature) return;
+    state.caseChartSignature = signature;
     chart.replaceChildren();
     chart.dataset.metric = state.metric;
     chart.dataset.scale = config.scale || "linear";
@@ -981,9 +1019,17 @@
   }
 
   function renderDetail(detail) {
-    stopSequence();
+    const caseId = String(detail.case_id);
+    const signature = JSON.stringify(detail);
+    if (caseId === state.currentCaseId && signature === state.detailSignature) {
+      state.detail = detail;
+      showState("content");
+      return;
+    }
+    if (state.detail && caseId !== state.currentCaseId) stopSequence();
     state.detail = detail;
-    state.currentCaseId = String(detail.case_id);
+    state.detailSignature = signature;
+    state.currentCaseId = caseId;
     root.dataset.caseId = state.currentCaseId;
     renderRun(detail.run);
     renderCaseIdentity(detail);

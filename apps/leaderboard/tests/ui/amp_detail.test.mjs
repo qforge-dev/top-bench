@@ -16,7 +16,9 @@ function run(id, name, esr, realtime, budget) {
     status: "completed",
     total_cases: 150,
     completed_cases: 150,
+    amp_control_count: 7,
     unique_positions_used: 165,
+    created_at: "2026-08-31T12:34:56Z",
     audio_duration_sum: budget,
     metrics: {
       esr: { mean: esr },
@@ -30,6 +32,19 @@ function run(id, name, esr, realtime, budget) {
       },
     },
   };
+}
+
+async function waitFor(assertion, timeoutMs = 1_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  assertion();
 }
 
 function markup(payload) {
@@ -75,6 +90,16 @@ test("amp page scales model selection through a searchable table and chart tabs"
     ["Blackface v22 · 30s", "Blackface v21 · 60s"],
   );
   assert.equal(document.querySelector("#amp-standings .amp-link").getAttribute("href"), "/runs/v21");
+  const selectedRow = document.querySelector('[data-run-id="v21"]');
+  assert.equal(selectedRow.querySelector('td[data-label="Amp parameters"]').textContent, "7");
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Positions per amp parameter"]').textContent,
+    "23.5714",
+  );
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Started"] time').getAttribute("datetime"),
+    "2026-08-31T12:34:56Z",
+  );
 
   document.querySelector('[data-chart-mode="positions"]').click();
   assert.equal(document.querySelector("#comparison-title").textContent, "Quality vs positions");
@@ -95,5 +120,39 @@ test("amp page scales model selection through a searchable table and chart tabs"
   assert.deepEqual(
     [...document.querySelectorAll("#amp-model-body tr")].map((row) => row.dataset.runId),
     ["v21"],
+  );
+});
+
+test("live progress refreshes do not replace the amp comparison graph", async () => {
+  const liveRun = run("live", "Live model", 0.04, 12, 60);
+  liveRun.status = "running";
+  liveRun.completed_cases = 148;
+  const payload = { runs: [liveRun] };
+  let intervalCallback;
+  let responsePayload = payload;
+  const dom = new JSDOM(markup(payload), {
+    runScripts: "outside-only",
+    url: "https://arena.test/amps/blackface-63",
+  });
+  Object.defineProperty(dom.window.document, "hidden", { configurable: true, value: false });
+  dom.window.setInterval = (callback) => {
+    intervalCallback = callback;
+    return 1;
+  };
+  dom.window.fetch = async () => ({ ok: true, json: async () => responsePayload });
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const originalPoint = dom.window.document.querySelector("#amp-comparison-chart .amp-run-point");
+  responsePayload = JSON.parse(JSON.stringify(payload));
+  responsePayload.runs[0].completed_cases = 149;
+  intervalCallback();
+  await waitFor(() => assert.match(
+    dom.window.document.querySelector("#selected-summary").textContent,
+    /149 \/ 150/,
+  ));
+  assert.strictEqual(
+    dom.window.document.querySelector("#amp-comparison-chart .amp-run-point"),
+    originalPoint,
   );
 });

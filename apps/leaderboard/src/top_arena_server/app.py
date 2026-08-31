@@ -821,16 +821,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def run_case_page(request: Request, run_id: str, case_id: str) -> Response:
         async with database.session() as session:
-            run_name = await session.scalar(
-                select(BenchmarkRun.name)
-                .join(RunCase, RunCase.run_id == BenchmarkRun.id)
-                .where(
-                    BenchmarkRun.id == run_id,
-                    RunCase.benchmark_case_id == case_id,
+            run_info = (
+                await session.execute(
+                    select(BenchmarkRun.name, BenchmarkRun.created_at)
+                    .join(RunCase, RunCase.run_id == BenchmarkRun.id)
+                    .where(
+                        BenchmarkRun.id == run_id,
+                        RunCase.benchmark_case_id == case_id,
+                    )
                 )
-            )
-        if run_name is None:
+            ).one_or_none()
+        if run_info is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+        run_name, run_started = run_info
         return templates.TemplateResponse(
             request=request,
             name="run_detail.html",
@@ -838,6 +841,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "run_id": run_id,
                 "case_id": case_id,
                 "run_name": run_name,
+                "run_started": run_started.isoformat(),
                 "page_title": f"{run_name} · Case detail",
             },
         )

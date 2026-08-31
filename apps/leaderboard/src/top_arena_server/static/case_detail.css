@@ -32,6 +32,36 @@
   color: var(--text);
 }
 
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.run-started {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.run-started span {
+  display: block;
+  margin-bottom: 2px;
+  color: #707c86;
+  font-size: 0.55rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.run-started time {
+  color: var(--text);
+}
+
 .detail-main {
   width: min(100% - 40px, 1480px);
   min-height: calc(100vh - 76px);
@@ -929,6 +959,18 @@
 }
 
 @media (max-width: 600px) {
+  .detail-header-actions {
+    gap: 7px;
+  }
+
+  .run-started {
+    font-size: 0.58rem;
+  }
+
+  .run-started span {
+    display: none;
+  }
+
   .run-overview {
     padding-top: 22px;
   }

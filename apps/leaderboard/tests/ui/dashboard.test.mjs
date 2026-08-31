@@ -20,6 +20,7 @@ function run(id, name, ampId, ampName) {
     turns: 1,
     training_time: 10,
     description: `${ampName} model`,
+    created_at: "2026-08-31T12:34:56Z",
     parameter_count: 1_000,
     status: "completed",
     total_cases: 50,
@@ -37,6 +38,19 @@ function run(id, name, ampId, ampName) {
       },
     },
   };
+}
+
+async function waitFor(assertion, timeoutMs = 1_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  assertion();
 }
 
 function markup(payload) {
@@ -70,6 +84,7 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
     runScripts: "outside-only",
     url: "https://arena.test/",
   });
+  Object.defineProperty(dom.window.document, "hidden", { configurable: true, value: false });
   dom.window.setInterval = () => 1;
   const script = await readFile(SCRIPT_URL, "utf8");
   dom.window.eval(script);
@@ -101,6 +116,15 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.doesNotMatch(selectedRow.querySelector('td[data-label="Amp"]').textContent, /guitar/i);
   assert.equal(selectedRow.querySelector('td[data-label="Amp parameters"]').textContent, "6");
   assert.equal(
+    selectedRow.querySelector('td[data-label="Positions per amp parameter"]').textContent,
+    "0.8333",
+  );
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Started"] time').getAttribute("datetime"),
+    "2026-08-31T12:34:56Z",
+  );
+  assert.match(selectedRow.querySelector('td[data-label="Started"]').textContent, /34:56/);
+  assert.equal(
     selectedRow.querySelector('td[data-label="Amp"] .amp-link').getAttribute("href"),
     "/amps/pg-clean",
   );
@@ -108,6 +132,40 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
   assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);
   assert.match(esrCell.textContent, /Model 20\.0% lower/);
+});
+
+test("live progress refreshes do not replace the Pareto graph", async () => {
+  const initialRun = run("run-live", "Live model", "pg-clean", "PG Clean");
+  initialRun.status = "running";
+  initialRun.completed_cases = 48;
+  const payload = { runs: [initialRun] };
+  let intervalCallback;
+  let responsePayload = payload;
+  const dom = new JSDOM(markup(payload), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  Object.defineProperty(dom.window.document, "hidden", { configurable: true, value: false });
+  dom.window.setInterval = (callback) => {
+    intervalCallback = callback;
+    return 1;
+  };
+  dom.window.fetch = async () => ({ ok: true, json: async () => responsePayload });
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const originalPoint = dom.window.document.querySelector("#pareto-chart .run-point");
+  responsePayload = JSON.parse(JSON.stringify(payload));
+  responsePayload.runs[0].completed_cases = 49;
+  intervalCallback();
+  await waitFor(() => assert.match(
+    dom.window.document.querySelector('td[data-label="Progress"]').textContent,
+    /49\/50/,
+  ));
+  assert.strictEqual(
+    dom.window.document.querySelector("#pareto-chart .run-point"),
+    originalPoint,
+  );
 });
 
 test("Pareto chart plots positions per control against ESR on a logarithmic scale", async () => {

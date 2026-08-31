@@ -689,6 +689,24 @@ tbody tr:last-child td {
   padding-inline: 8px;
 }
 
+.ratio-column {
+  min-width: 105px;
+  white-space: nowrap;
+}
+
+.started-column,
+.timestamp-cell {
+  min-width: 190px;
+  white-space: nowrap;
+}
+
+.timestamp-cell {
+  color: var(--text-muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.67rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .metric-column {
   min-width: 170px;
 }

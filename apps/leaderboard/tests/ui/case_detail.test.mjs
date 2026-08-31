@@ -19,6 +19,7 @@ function detail(caseId, index) {
       name: "Velvet Drive",
       creator: "Studio North",
       description: "A compact recurrent amp model.",
+      created_at: "2026-08-31T12:34:56Z",
       status: "completed",
       amp_name: "Blackface 63",
       unique_positions_used: 5,
@@ -128,6 +129,7 @@ function detail(caseId, index) {
 
 function markup() {
   return `<!doctype html><html><body>
+    <time id="run-started"></time>
     <main id="run-detail" data-run-id="run-1" data-case-id="case-a">
       <div id="detail-loading"></div><div id="detail-error" hidden></div><div id="detail-empty" hidden></div>
       <div id="detail-content" hidden>
@@ -335,6 +337,8 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
     "/waveform/case-a",
   ]);
   assert.equal(document.querySelector("#run-name").textContent, "Velvet Drive");
+  assert.equal(document.querySelector("#run-started").getAttribute("datetime"), "2026-08-31T12:34:56Z");
+  assert.match(document.querySelector("#run-started").textContent, /34:56/);
   assert.equal(document.title, "Velvet Drive · Case detail · Top Arena");
   assert.match(document.querySelector("#run-summary").textContent, /Mean level Δ/);
   assert.match(document.querySelector("#run-summary").textContent, /Mean peak Δ/);
@@ -370,6 +374,22 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.equal(document.querySelectorAll("#case-chart .chart-series").length, 2);
   assert.match(document.querySelector("#case-chart").textContent, /-1\.00/);
   assert.match(document.querySelector("#case-chart").textContent, /1\.00/);
+});
+
+test("an unchanged live refresh preserves both run graphs", async () => {
+  const { requests, timers, window } = await setup({ captureTimers: true, runStatus: "running" });
+  const document = window.document;
+  await waitFor(() => assert.equal(document.querySelectorAll("#waveform-chart .waveform-series").length, 3));
+  const originalCaseSeries = document.querySelector("#case-chart .chart-series");
+  const originalWaveformSeries = document.querySelector("#waveform-chart .waveform-series");
+
+  assert.equal(timers.length, 1);
+  timers[0].callback();
+  await waitFor(() => assert.equal(requests.filter((url) => url.endsWith("/detail")).length, 2));
+
+  assert.strictEqual(document.querySelector("#case-chart .chart-series"), originalCaseSeries);
+  assert.strictEqual(document.querySelector("#waveform-chart .waveform-series"), originalWaveformSeries);
+  assert.equal(requests.filter((url) => url.startsWith("/waveform/")).length, 1);
 });
 
 test("large ESR ranges use a readable logarithmic scale", async () => {

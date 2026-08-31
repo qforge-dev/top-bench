@@ -3,6 +3,15 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const POLL_INTERVAL_MS = 5_000;
+  const STARTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    second: "2-digit",
+    timeZoneName: "short",
+    year: "numeric",
+  });
   const elements = {
     main: document.querySelector(".amp-main"),
     initialData: document.querySelector("#amp-initial-data"),
@@ -34,6 +43,8 @@
     selectedId: null,
     chartMode: "speed",
     requestInFlight: false,
+    runsSignature: null,
+    chartSignature: null,
   };
 
   const chartModes = {
@@ -86,6 +97,8 @@
     const source = raw && typeof raw === "object" ? raw : {};
     const baseline = source.metrics?.nam_a2_full;
     const baselineSource = { metrics: baseline && typeof baseline === "object" ? baseline : {} };
+    const ampParameterCount = finite(firstValue(source.amp_control_count, source.ampControlCount));
+    const positions = finite(firstValue(source.unique_positions_used, source.uniquePositionsUsed));
     return {
       id: text(firstValue(source.id, source.run_id, source.runId), `run-${index}`),
       name: text(firstValue(source.name, source.model_name, source.modelName), "Untitled model"),
@@ -93,7 +106,12 @@
       status: text(source.status, "queued").toLowerCase(),
       completedCases: finite(firstValue(source.completed_cases, source.completedCases)) ?? 0,
       totalCases: finite(firstValue(source.total_cases, source.totalCases, source.case_count)) ?? 0,
-      positions: finite(firstValue(source.unique_positions_used, source.uniquePositionsUsed)),
+      ampParameterCount,
+      positions,
+      positionsPerControl: positions !== null && ampParameterCount !== null && ampParameterCount > 0
+        ? positions / ampParameterCount
+        : null,
+      createdAt: text(firstValue(source.created_at, source.createdAt)),
       audioDuration: finite(firstValue(source.audio_duration_sum, source.audioDurationSum)),
       esr: metric(source, "esr"),
       weighted: metric(source, "human_weighted_esr", "humanWeightedEsr"),
@@ -143,6 +161,11 @@
     return value === null || value === undefined
       ? "—"
       : Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  function formatStartedAt(value) {
+    const date = new Date(value);
+    return value && !Number.isNaN(date.getTime()) ? STARTED_AT_FORMATTER.format(date) : "—";
   }
 
   function rankedRuns() {
@@ -202,6 +225,15 @@
     return cell;
   }
 
+  function startedCell(value) {
+    const cell = createElement("td", "timestamp-cell");
+    cell.dataset.label = "Started";
+    const timestamp = createElement("time", "", formatStartedAt(value));
+    if (value) timestamp.dateTime = value;
+    cell.append(timestamp);
+    return cell;
+  }
+
   function renderTable() {
     const runs = filteredRuns().sort((left, right) => {
       if (left.esr === null && right.esr === null) return left.name.localeCompare(right.name);
@@ -233,6 +265,9 @@
         metricCell("MRSTFT", run.mrstft),
         metricCell("Realtime", run.realtime, run.realtime === null ? "" : "×"),
         metricCell("Positions", run.positions),
+        metricCell("Amp parameters", run.ampParameterCount),
+        metricCell("Positions per amp parameter", run.positionsPerControl),
+        startedCell(run.createdAt),
         metricCell("Budget", run.audioDuration, run.audioDuration === null ? "" : "s"),
       );
       row.addEventListener("click", (event) => {
@@ -331,9 +366,16 @@
     elements.chartTitle.textContent = mode.title;
     elements.chartGuidance.textContent = mode.guidance;
     elements.chartDescription.textContent = `${mode.title} for this amp. Mean ESR is lower when a point is higher on the chart.`;
+    const runs = state.runs.filter((run) => run.esr !== null && mode.value(run) !== null);
+    const signature = JSON.stringify({
+      mode: state.chartMode,
+      selectedId: state.selectedId,
+      runs: runs.map((run) => [run.id, run.name, run.esr, mode.value(run)]),
+    });
+    if (signature === state.chartSignature) return;
+    state.chartSignature = signature;
     elements.chart.replaceChildren();
     hideTooltip();
-    const runs = state.runs.filter((run) => run.esr !== null && mode.value(run) !== null);
     if (!runs.length) {
       const empty = createSvg("text", { x: 560, y: 215, "text-anchor": "middle" });
       empty.textContent = "Completed runs with scores will appear here";
@@ -444,8 +486,13 @@
         headers: { Accept: "application/json" },
       });
       if (!response.ok) throw new Error(`Amp results request failed with ${response.status}`);
-      state.runs = parsePayload(await response.json());
-      render();
+      const runs = parsePayload(await response.json());
+      const signature = JSON.stringify(runs);
+      if (signature !== state.runsSignature) {
+        state.runs = runs;
+        state.runsSignature = signature;
+        render();
+      }
     } catch (error) {
       console.warn("Could not refresh amp results.", error);
     } finally {
@@ -477,6 +524,7 @@
   });
 
   state.runs = parsePayload(parseInitialData());
+  state.runsSignature = JSON.stringify(state.runs);
   render();
   window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
 })();
