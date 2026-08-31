@@ -79,6 +79,7 @@ class BenchmarkRun(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     creator: Mapped[str] = mapped_column(String(255), index=True)
     amp_id: Mapped[str] = mapped_column(ForeignKey("amps.id"), index=True)
+    amp_control_count_override: Mapped[int | None] = mapped_column(Integer)
     unique_positions_used: Mapped[int] = mapped_column(Integer)
     audio_duration_sum: Mapped[float] = mapped_column(Float)
     turns: Mapped[int] = mapped_column(Integer)

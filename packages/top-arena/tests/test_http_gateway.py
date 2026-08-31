@@ -7,8 +7,9 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 from top_arena._gateway import HttpBenchmarkGateway
-from top_arena._models import BenchmarkMetadata
+from top_arena._models import BenchmarkCase, BenchmarkMetadata
 
 
 async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> None:
@@ -19,7 +20,11 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
         if request.method == "POST" and request.url.path == "/api/v1/runs":
             body = json.loads(request.content)
             assert body["amp_id"] == "demo-amp"
+            assert body["amp_control_count"] == 5
             return httpx.Response(201, json={"id": "run-1"})
+        if request.method == "PATCH" and request.url.path == "/api/v1/runs/run-1":
+            assert json.loads(request.content) == {"amp_control_count": 5}
+            return httpx.Response(200, json={"id": "run-1"})
         if request.url.path == "/api/v1/amps/demo-amp/manifest":
             return httpx.Response(
                 200,
@@ -73,9 +78,11 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
         training_time=10.0,
         description="test model",
         parameter_count=100,
+        amp_control_count=5,
     )
 
     run_id = await gateway.create_run(metadata, "demo-amp")
+    await gateway.update_run_metadata(run_id, {"amp_control_count": 5})
     case = (await gateway.get_manifest("demo-amp"))[0]
     dry_path = tmp_path / "dry.wav"
     await gateway.download_dry(case, dry_path)
@@ -91,3 +98,35 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     assert snapshot.result is not None
     assert snapshot.result.metrics == {"esr": {"mean": 0.01}}
     assert ("GET", "/objects/example.wav") in calls
+    assert ("PATCH", "/api/v1/runs/run-1") in calls
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ([], "JSON object"),
+        ({"cases": {}}, "cases list"),
+        ({"cases": [{"positions": "invalid"}]}, "positions must be a list"),
+        ({"cases": [{"positions": ["invalid"]}]}, "matrix row must be a list"),
+        ({"cases": [{"positions": [[True]]}]}, "position values must be numbers"),
+        ({"cases": [{"positions": [[0.5]]}]}, "field 'id' must be a string"),
+    ],
+)
+async def test_manifest_rejects_malformed_payloads(payload: object, message: str) -> None:
+    gateway = HttpBenchmarkGateway(
+        "https://arena.test",
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload)),
+    )
+
+    with pytest.raises(TypeError, match=message):
+        await gateway.get_manifest("demo-amp")
+    await gateway.aclose()
+
+
+async def test_download_requires_a_manifest_url(tmp_path: Path) -> None:
+    gateway = HttpBenchmarkGateway("https://arena.test")
+    case = BenchmarkCase("case-1", ((0.0,),), "dry.wav", "a" * 64)
+
+    with pytest.raises(ValueError, match="does not contain a download_url"):
+        await gateway.download_dry(case, tmp_path / "dry.wav")
+    await gateway.aclose()

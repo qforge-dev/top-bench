@@ -52,6 +52,7 @@ run = benchmark.create(
     training_time=5_000.0,
     description="A short, useful explanation of the model and training setup.",
     parameter_count=40_000,
+    amp_control_count=5,
     options=PipelineOptions(
         download_concurrency=4,
         run_concurrency=1,
@@ -108,9 +109,32 @@ The fields passed to `benchmark.create(...)` make leaderboard comparisons audita
 | `training_time` | End-to-end training time in seconds. |
 | `description` | Architecture, data, or other context needed to understand the result. |
 | `parameter_count` | Total trainable parameter count. |
+| `amp_control_count` | Optional per-run override for the amp's knob and switch count. Use this when the published amp definition is incorrect for the run. |
 
 These values are reported by the submitter; benchmark audio scores are calculated by
-the server.
+the server. Existing run metadata can be corrected without changing its scores through
+the Python client:
+
+```python
+from top_arena import benchmark
+
+benchmark.update_metadata("RUN_ID", amp_control_count=5)
+```
+
+Use `await benchmark.update_metadata_async(...)` inside an async event loop. The
+equivalent HTTP endpoint is `PATCH /api/v1/runs/{run_id}`:
+
+```bash
+curl --request PATCH \
+  --header 'content-type: application/json' \
+  --data '{"amp_control_count": 5}' \
+  https://top-arena.labqoat.com/api/v1/runs/RUN_ID
+```
+
+The same endpoint accepts `name`, `creator`, `unique_positions_used`,
+`audio_duration_sum`, `turns`, `training_time`, `description`, and `parameter_count`.
+Send `null` for `amp_control_count` to return to the shared amp definition. The amp ID
+and calculated audio scores cannot be overwritten.
 
 ## How the pipeline works
 

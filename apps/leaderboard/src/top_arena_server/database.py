@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -24,6 +25,9 @@ class Database:
             expire_on_commit=False,
             class_=AsyncSession,
         )
+        self._sqlite_session_lock = (
+            asyncio.Lock() if self.engine.url.get_backend_name() == "sqlite" else None
+        )
 
     async def initialize(self) -> None:
         async with self.engine.begin() as connection:
@@ -34,6 +38,15 @@ class Database:
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:
+        if self._sqlite_session_lock is not None:
+            async with self._sqlite_session_lock, self._session_scope() as session:
+                yield session
+            return
+        async with self._session_scope() as session:
+            yield session
+
+    @asynccontextmanager
+    async def _session_scope(self) -> AsyncIterator[AsyncSession]:
         async with self._sessions() as session:
             try:
                 yield session

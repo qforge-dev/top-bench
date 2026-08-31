@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ApiModel(BaseModel):
@@ -35,6 +35,7 @@ class CreateRunRequest(ApiModel):
     amp_id: str
     name: str
     creator: str = "anonymous"
+    amp_control_count: int | None = Field(default=None, gt=0)
     unique_positions_used: int
     audio_duration_sum: float
     turns: int
@@ -47,6 +48,33 @@ class CreateRunResponse(ApiModel):
     id: str
     status: str
     total_cases: int
+
+
+class UpdateRunMetadataRequest(ApiModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    creator: str | None = Field(default=None, min_length=1, max_length=255)
+    amp_control_count: int | None = Field(default=None, gt=0)
+    unique_positions_used: int | None = Field(default=None, ge=0)
+    audio_duration_sum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    turns: int | None = Field(default=None, ge=0)
+    training_time: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    description: str | None = None
+    parameter_count: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def require_updates(self) -> Self:
+        if not self.model_fields_set:
+            msg = "at least one metadata field must be supplied"
+            raise ValueError(msg)
+        null_fields = {
+            field
+            for field in self.model_fields_set
+            if field != "amp_control_count" and getattr(self, field) is None
+        }
+        if null_fields:
+            msg = f"metadata fields cannot be null: {', '.join(sorted(null_fields))}"
+            raise ValueError(msg)
+        return self
 
 
 class EventRequest(ApiModel):

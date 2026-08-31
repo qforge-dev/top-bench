@@ -27,6 +27,7 @@ class BenchmarkMetadata:
     training_time: float
     description: str
     parameter_count: int
+    amp_control_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

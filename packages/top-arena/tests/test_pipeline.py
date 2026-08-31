@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pytest
 import soundfile as sf
 from top_arena._gateway import BenchmarkGateway
 from top_arena._models import (
@@ -30,6 +31,7 @@ class FakeGateway(BenchmarkGateway):
     events: list[str] = field(default_factory=list)
     last_download_finished_at: float = 0.0
     first_upload_finished_at: float | None = None
+    client_failure_errors_remaining: int = 0
 
     async def create_run(self, metadata: BenchmarkMetadata, amp_id: str) -> str:
         del metadata, amp_id
@@ -59,6 +61,10 @@ class FakeGateway(BenchmarkGateway):
         payload: dict[str, object] | None = None,
     ) -> None:
         del run_id, case_id, payload
+        if kind == "run.client_failed" and self.client_failure_errors_remaining > 0:
+            self.client_failure_errors_remaining -= 1
+            msg = "temporary event failure"
+            raise RuntimeError(msg)
         self.events.append(kind)
 
     async def upload_wet(
@@ -136,6 +142,35 @@ async def test_pipeline_overlaps_download_inference_and_upload(tmp_path: Path) -
     assert "download.started" in gateway.events
     assert "inference.completed" in gateway.events
     assert "upload.completed" in gateway.events
+
+
+async def test_client_failure_notification_retries_transient_errors(tmp_path: Path) -> None:
+    case = BenchmarkCase("case-1", ((0.0,),), "dry/input.wav", "f" * 64)
+    gateway = FakeGateway((case,), client_failure_errors_remaining=2)
+    run = BenchmarkRun(
+        gateway=gateway,
+        metadata=BenchmarkMetadata(
+            name="failing-model",
+            creator="test-suite",
+            unique_positions_used=1,
+            audio_duration_sum=0.01,
+            turns=1,
+            training_time=1.0,
+            description="Failure reporting",
+            parameter_count=1,
+        ),
+        cache_dir=tmp_path / "cache",
+    )
+
+    def broken_model(_audio_path: Path, _positions: tuple[tuple[float, ...], ...]) -> Path:
+        msg = "model failed"
+        raise RuntimeError(msg)
+
+    with pytest.raises(ExceptionGroup):
+        await run.run_async("demo-amp", broken_model)
+
+    assert gateway.client_failure_errors_remaining == 0
+    assert "run.client_failed" in gateway.events
 
 
 async def test_dry_audio_is_reused_from_the_local_cache(tmp_path: Path) -> None:

@@ -97,8 +97,12 @@ test("amp page scales model selection through a searchable table and chart tabs"
     "23.5714",
   );
   assert.equal(
-    selectedRow.querySelector('td[data-label="Started"] time').getAttribute("datetime"),
+    selectedRow.querySelector('td[data-label="Started (UTC)"] time').getAttribute("datetime"),
     "2026-08-31T12:34:56Z",
+  );
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Started (UTC)"]').textContent,
+    "31.08.2026 12:34",
   );
 
   document.querySelector('[data-chart-mode="positions"]').click();

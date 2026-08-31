@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import inspect
+import logging
 import os
 import time
 import uuid
@@ -26,6 +27,9 @@ from top_arena._reporting import ConsoleReporter
 
 if TYPE_CHECKING:
     from top_arena._gateway import BenchmarkGateway
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -105,13 +109,12 @@ class BenchmarkRun:
             return result  # noqa: TRY300
         except Exception as error:
             reporter.fail(error)
+            if completion_task is not None and not completion_task.done():
+                completion_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await completion_task
             if run_id is not None:
-                with suppress(Exception):
-                    await self._gateway.emit_event(
-                        run_id,
-                        "run.client_failed",
-                        payload={"error": str(error)},
-                    )
+                await self._report_client_failure(run_id, error)
             raise
         finally:
             if completion_task is not None:
@@ -121,6 +124,26 @@ class BenchmarkRun:
                     await completion_task
             if isinstance(self._gateway, _AsyncClosable):
                 await self._gateway.aclose()
+
+    async def _report_client_failure(self, run_id: str, error: Exception) -> None:
+        for attempt in range(3):
+            try:
+                await self._gateway.emit_event(
+                    run_id,
+                    "run.client_failed",
+                    payload={"error": str(error)},
+                )
+            except Exception as notification_error:
+                if attempt == 2:
+                    LOGGER.warning(
+                        "could not report failed benchmark run %s",
+                        run_id,
+                        exc_info=notification_error,
+                    )
+                    return
+                await asyncio.sleep(0.05 * (attempt + 1))
+            else:
+                return
 
     async def _execute_pipeline(
         self,

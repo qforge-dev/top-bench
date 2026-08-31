@@ -43,7 +43,7 @@
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
     <link rel="stylesheet" href="/static/styles.css?v=20260831-live-tables">
-    <script defer src="/static/dashboard.js?v=20260831-live-tables"></script>
+    <script defer src="/static/dashboard.js?v=20260831-utc-dates"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -161,7 +161,7 @@
                   <button class="sort-button" type="button" data-sort="positionsPerControl" aria-label="Positions per amp parameter">Pos / param <span aria-hidden="true">↕</span></button>
                 </th>
                 <th class="started-column" scope="col" aria-sort="none">
-                  <button class="sort-button" type="button" data-sort="started">Started <span aria-hidden="true">↕</span></button>
+                  <button class="sort-button" type="button" data-sort="started">Started (UTC) <span aria-hidden="true">↕</span></button>
                 </th>
                 <th scope="col" aria-sort="none">
                   <button class="sort-button" type="button" data-sort="realtime">Realtime <span aria-hidden="true">↕</span></button>
@@ -201,7 +201,7 @@
                   <td data-label="Positions" class="numeric-cell">{{ run.unique_positions_used|default("—", true) }}</td>
                   <td data-label="Amp parameters" class="numeric-cell">{{ integer(run.amp_control_count) }}</td>
                   <td data-label="Positions per amp parameter" class="numeric-cell">{{ ratio(run.unique_positions_used, run.amp_control_count) }}</td>
-                  <td data-label="Started" class="timestamp-cell"><time datetime="{{ run.created_at }}">{{ run.created_at }}</time></td>
+                  <td data-label="Started (UTC)" class="timestamp-cell"><time datetime="{{ run.created_at }}">{{ run.created_at[8:10] }}.{{ run.created_at[5:7] }}.{{ run.created_at[0:4] }} {{ run.created_at[11:16] }}</time></td>
                   <td data-label="Realtime" class="numeric-cell">
                     {% if realtime.mean|default(none) is not none %}{{ number(realtime.mean, 2) }}×{% else %}—{% endif %}
                   </td>

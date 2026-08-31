@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from pathlib import Path
 
 import httpx
@@ -109,6 +110,47 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert snapshot["metrics"]["esr"]["mean"] is not None  # type: ignore[index]
             assert snapshot["metrics"]["mrstft"]["p90"] is not None  # type: ignore[index]
 
+            original_metrics = snapshot["metrics"]
+            metadata_response = await client.patch(
+                f"/api/v1/runs/{run_id}",
+                json={
+                    "amp_control_count": 5,
+                    "unique_positions_used": 50,
+                    "description": "Corrected lifecycle metadata",
+                },
+            )
+            metadata_response.raise_for_status()
+            corrected = metadata_response.json()
+            assert corrected["amp_control_count"] == 5
+            assert corrected["unique_positions_used"] == 50
+            assert corrected["description"] == "Corrected lifecycle metadata"
+            assert corrected["metrics"] == original_metrics
+            cleared_override = await client.patch(
+                f"/api/v1/runs/{run_id}",
+                json={"amp_control_count": None},
+            )
+            cleared_override.raise_for_status()
+            assert cleared_override.json()["amp_control_count"] == 6
+            restored_override = await client.patch(
+                f"/api/v1/runs/{run_id}",
+                json={"amp_control_count": 5},
+            )
+            restored_override.raise_for_status()
+            assert restored_override.json()["amp_control_count"] == 5
+            assert (await client.patch(f"/api/v1/runs/{run_id}", json={})).status_code == 422
+            assert (
+                await client.patch(
+                    f"/api/v1/runs/{run_id}",
+                    json={"amp_control_count": 0},
+                )
+            ).status_code == 422
+            assert (
+                await client.patch(
+                    "/api/v1/runs/not-a-run",
+                    json={"amp_control_count": 5},
+                )
+            ).status_code == 404
+
             detail_response = await client.get(f"/api/v1/runs/{run_id}/cases/{case['id']}/detail")
             detail_response.raise_for_status()
             detail = detail_response.json()
@@ -130,6 +172,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             kinds = {event["kind"] for event in events_response.json()["events"]}
             assert "score.completed" in kinds
             assert "run.completed" in kinds
+            assert "run.metadata_updated" in kinds
 
             dashboard_response = await client.get("/")
             dashboard_response.raise_for_status()
@@ -137,14 +180,18 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260831-live-tables" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260831-utc-dates" in dashboard_response.text
             assert ">Amp params <" in dashboard_response.text
             assert (
-                'data-label="Amp parameters" class="numeric-cell">6</td>' in dashboard_response.text
+                'data-label="Amp parameters" class="numeric-cell">5</td>' in dashboard_response.text
             )
             assert ">Pos / param <" in dashboard_response.text
-            assert 'data-label="Positions per amp parameter"' in dashboard_response.text
-            assert 'data-label="Started" class="timestamp-cell"' in dashboard_response.text
+            assert re.search(
+                r'data-label="Positions per amp parameter" '
+                r'class="numeric-cell">\s*10\.0000\s*</td>',
+                dashboard_response.text,
+            )
+            assert 'data-label="Started (UTC)" class="timestamp-cell"' in dashboard_response.text
             assert 'class="amp-link" href="/amps/demo-bias-x"' in dashboard_response.text
             assert 'class="hero"' not in dashboard_response.text
             assert 'class="hero-stats"' not in dashboard_response.text
@@ -155,10 +202,10 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert "Demo Bias-X results · Top Arena" in amp_page_response.text
             assert "lifecycle-model" in amp_page_response.text
             assert 'data-amp-id="demo-bias-x"' in amp_page_response.text
-            assert "/static/amp_detail.js?v=20260831-live-tables" in amp_page_response.text
+            assert "/static/amp_detail.js?v=20260831-utc-dates" in amp_page_response.text
             assert ">Amp params<" in amp_page_response.text
             assert ">Pos / param<" in amp_page_response.text
-            assert ">Started<" in amp_page_response.text
+            assert ">Started (UTC)<" in amp_page_response.text
             assert 'data-chart-mode="positions"' in amp_page_response.text
             assert 'data-chart-mode="budget"' in amp_page_response.text
             assert (await client.get("/amps/not-a-real-amp")).status_code == 404
@@ -167,7 +214,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             leaderboard_response.raise_for_status()
             leaderboard = leaderboard_response.json()
             assert leaderboard["runs"][0]["cases"] == []
-            assert leaderboard["runs"][0]["amp_control_count"] == 6
+            assert leaderboard["runs"][0]["amp_control_count"] == 5
+            assert leaderboard["runs"][0]["unique_positions_used"] == 50
+            assert leaderboard["runs"][0]["metrics"] == original_metrics
             assert [(amp["id"], amp["name"]) for amp in leaderboard["amps"]] == [
                 ("demo-bias-x", "Demo Bias-X"),
                 ("pg-clean", "PG Clean"),

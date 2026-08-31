@@ -120,10 +120,13 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
     "0.8333",
   );
   assert.equal(
-    selectedRow.querySelector('td[data-label="Started"] time').getAttribute("datetime"),
+    selectedRow.querySelector('td[data-label="Started (UTC)"] time').getAttribute("datetime"),
     "2026-08-31T12:34:56Z",
   );
-  assert.match(selectedRow.querySelector('td[data-label="Started"]').textContent, /34:56/);
+  assert.equal(
+    selectedRow.querySelector('td[data-label="Started (UTC)"]').textContent,
+    "31.08.2026 12:34",
+  );
   assert.equal(
     selectedRow.querySelector('td[data-label="Amp"] .amp-link').getAttribute("href"),
     "/amps/pg-clean",

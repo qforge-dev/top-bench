@@ -3,15 +3,6 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const POLL_INTERVAL_MS = 5_000;
-  const STARTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    second: "2-digit",
-    timeZoneName: "short",
-    year: "numeric",
-  });
   const elements = {
     main: document.querySelector(".amp-main"),
     initialData: document.querySelector("#amp-initial-data"),
@@ -165,7 +156,9 @@
 
   function formatStartedAt(value) {
     const date = new Date(value);
-    return value && !Number.isNaN(date.getTime()) ? STARTED_AT_FORMATTER.format(date) : "—";
+    if (!value || Number.isNaN(date.getTime())) return "—";
+    const pad = (part) => String(part).padStart(2, "0");
+    return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
   }
 
   function rankedRuns() {
@@ -227,7 +220,7 @@
 
   function startedCell(value) {
     const cell = createElement("td", "timestamp-cell");
-    cell.dataset.label = "Started";
+    cell.dataset.label = "Started (UTC)";
     const timestamp = createElement("time", "", formatStartedAt(value));
     if (value) timestamp.dateTime = value;
     cell.append(timestamp);

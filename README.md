@@ -138,6 +138,10 @@ preserved in copied URLs and browser history, while large audio objects are only
 when playback begins. Interactive API documentation is available at
 [`/docs`](https://top-arena.labqoat.com/docs), and the health endpoint is `/health`.
 
+Run metadata can be corrected without changing calculated audio scores through
+`PATCH /api/v1/runs/{run_id}`. The optional `amp_control_count` field provides a
+per-run knob and switch count override when the shared amp definition is inaccurate.
+
 There is currently no account system or private API surface. Model metadata and
 submitted outputs are intended for the public benchmark. The SDK uploads model output
 audio; it does not upload model weights, source code, or private training data.

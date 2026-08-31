@@ -4,15 +4,6 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const REFRESH_INTERVAL_MS = 2_000;
   const TERMINAL_STATUSES = new Set(["completed", "finished", "failed", "error"]);
-  const STARTED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    second: "2-digit",
-    timeZoneName: "short",
-    year: "numeric",
-  });
   const SEQUENCE_SOURCES = [
     { label: "BIAS-X" },
     { label: "Model" },
@@ -149,7 +140,9 @@
 
   function formatStartedAt(value) {
     const date = new Date(value);
-    return value && !Number.isNaN(date.getTime()) ? STARTED_AT_FORMATTER.format(date) : "—";
+    if (!value || Number.isNaN(date.getTime())) return "—";
+    const pad = (part) => String(part).padStart(2, "0");
+    return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
   }
 
   function formatCompact(value) {

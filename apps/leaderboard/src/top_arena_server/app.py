@@ -37,6 +37,7 @@ from .schemas import (
     RunCaseIndexResponse,
     RunCaseMetricsResponse,
     RunResponse,
+    UpdateRunMetadataRequest,
     WaveformResponse,
     WaveformSeriesResponse,
 )
@@ -149,7 +150,7 @@ def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunRespon
         amp_id=run.amp_id,
         amp_name=run.amp.name,
         amp_type=run.amp.amp_type,
-        amp_control_count=len(run.amp.control_names),
+        amp_control_count=run.amp_control_count_override or len(run.amp.control_names),
         unique_positions_used=run.unique_positions_used,
         audio_duration_sum=run.audio_duration_sum,
         turns=run.turns,
@@ -179,6 +180,56 @@ async def _load_run(services: Services, run_id: str) -> BenchmarkRun | None:
                 .where(BenchmarkRun.id == run_id)
             ),
         )
+
+
+async def _update_run_metadata(
+    services: Services,
+    run_id: str,
+    request: UpdateRunMetadataRequest,
+) -> RunResponse:
+    try:
+        async with services.database.session() as session:
+            run = await session.scalar(
+                select(BenchmarkRun)
+                .options(joinedload(BenchmarkRun.amp))
+                .where(BenchmarkRun.id == run_id)
+            )
+            if run is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+
+            updates = request.model_dump(exclude_unset=True)
+            changes: dict[str, dict[str, Any]] = {}
+            if "amp_control_count" in updates:
+                old_count = run.amp_control_count_override or len(run.amp.control_names)
+                new_count = updates.pop("amp_control_count")
+                run.amp_control_count_override = cast("int | None", new_count)
+                effective_count = new_count or len(run.amp.control_names)
+                if old_count != effective_count:
+                    changes["amp_control_count"] = {
+                        "from": old_count,
+                        "to": effective_count,
+                    }
+
+            for field, value in updates.items():
+                previous = getattr(run, field)
+                if previous != value:
+                    setattr(run, field, value)
+                    changes[field] = {"from": previous, "to": value}
+
+            if changes:
+                run.updated_at = now_utc()
+                session.add(
+                    RunEvent(
+                        run_id=run_id,
+                        kind="run.metadata_updated",
+                        payload={"changes": changes},
+                    )
+                )
+            await session.flush()
+            response = _run_response(run, include_cases=False)
+    except IntegrityError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "run name already exists") from error
+    return response
 
 
 async def _load_case_locations(
@@ -368,8 +419,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         select(BenchmarkCase).where(BenchmarkCase.amp_id == request.amp_id)
                     )
                 ).all()
+                run_values = request.model_dump(exclude={"amp_control_count"})
                 run = BenchmarkRun(
-                    **request.model_dump(),
+                    **run_values,
+                    amp_control_count_override=request.amp_control_count,
                     total_cases=len(benchmark_cases),
                     completed_cases=0,
                     status="running",
@@ -508,6 +561,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
         return _run_response(run)
+
+    @app.patch(
+        "/api/v1/runs/{run_id}",
+        response_model=RunResponse,
+        tags=["runs"],
+    )
+    async def update_run_metadata(
+        run_id: str,
+        request: UpdateRunMetadataRequest,
+    ) -> RunResponse:
+        return await _update_run_metadata(services, run_id, request)
 
     @app.delete(
         "/api/v1/runs/{run_id}",
@@ -842,6 +906,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "case_id": case_id,
                 "run_name": run_name,
                 "run_started": run_started.isoformat(),
+                "run_started_display": run_started.strftime("%d.%m.%Y %H:%M"),
                 "page_title": f"{run_name} · Case detail",
             },
         )

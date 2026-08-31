@@ -75,10 +75,22 @@ class HttpBenchmarkGateway:
                 "training_time": metadata.training_time,
                 "description": metadata.description,
                 "parameter_count": metadata.parameter_count,
+                "amp_control_count": metadata.amp_control_count,
             },
         )
         _ = response.raise_for_status()
         return _required_str(_response_object(response), "id")
+
+    async def update_run_metadata(
+        self,
+        run_id: str,
+        updates: dict[str, object],
+    ) -> None:
+        response = await self._get_client().patch(
+            f"api/v1/runs/{quote(run_id, safe='')}",
+            json=updates,
+        )
+        _ = response.raise_for_status()
 
     async def get_manifest(self, amp_id: str) -> tuple[BenchmarkCase, ...]:
         response = await self._get_client().get(f"api/v1/amps/{quote(amp_id, safe='')}/manifest")

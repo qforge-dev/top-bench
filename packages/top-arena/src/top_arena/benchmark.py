@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -24,6 +25,7 @@ def create(
     training_time: float,
     description: str,
     parameter_count: int,
+    amp_control_count: int | None = None,
     server_url: str | None = None,
     cache_dir: str | Path | None = None,
     options: PipelineOptions | None = None,
@@ -43,6 +45,7 @@ def create(
         training_time=training_time,
         description=description,
         parameter_count=parameter_count,
+        amp_control_count=amp_control_count,
     )
     resolved_cache_dir = (
         user_cache_path("top-arena", ensure_exists=True)
@@ -57,3 +60,86 @@ def create(
         cache_dir=resolved_cache_dir,
         options=options,
     )
+
+
+def update_metadata(
+    run_id: str,
+    *,
+    name: str | None = None,
+    creator: str | None = None,
+    amp_control_count: int | None = None,
+    unique_positions_used: int | None = None,
+    audio_duration_sum: float | None = None,
+    turns: int | None = None,
+    training_time: float | None = None,
+    description: str | None = None,
+    parameter_count: int | None = None,
+    server_url: str | None = None,
+) -> None:
+    """Correct metadata for an existing run without changing its audio scores."""
+    try:
+        _ = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(
+            update_metadata_async(
+                run_id,
+                name=name,
+                creator=creator,
+                amp_control_count=amp_control_count,
+                unique_positions_used=unique_positions_used,
+                audio_duration_sum=audio_duration_sum,
+                turns=turns,
+                training_time=training_time,
+                description=description,
+                parameter_count=parameter_count,
+                server_url=server_url,
+            )
+        )
+        return
+    msg = (
+        "benchmark.update_metadata() cannot be used from an active event loop; "
+        "use update_metadata_async()"
+    )
+    raise RuntimeError(msg)
+
+
+async def update_metadata_async(
+    run_id: str,
+    *,
+    name: str | None = None,
+    creator: str | None = None,
+    amp_control_count: int | None = None,
+    unique_positions_used: int | None = None,
+    audio_duration_sum: float | None = None,
+    turns: int | None = None,
+    training_time: float | None = None,
+    description: str | None = None,
+    parameter_count: int | None = None,
+    server_url: str | None = None,
+) -> None:
+    """Asynchronously correct metadata for an existing run."""
+    updates: dict[str, object] = {
+        field: value
+        for field, value in {
+            "name": name,
+            "creator": creator,
+            "amp_control_count": amp_control_count,
+            "unique_positions_used": unique_positions_used,
+            "audio_duration_sum": audio_duration_sum,
+            "turns": turns,
+            "training_time": training_time,
+            "description": description,
+            "parameter_count": parameter_count,
+        }.items()
+        if value is not None
+    }
+    if not updates:
+        msg = "at least one metadata field must be supplied"
+        raise ValueError(msg)
+    gateway = HttpBenchmarkGateway(
+        server_url or os.environ.get("TOP_ARENA_SERVER_URL", DEFAULT_SERVER_URL)
+    )
+    try:
+        await gateway.update_run_metadata(run_id, updates)
+    finally:
+        await gateway.aclose()

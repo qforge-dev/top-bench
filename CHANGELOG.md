@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added optional per-run amp control-count overrides at submission time.
+- Added typed sync and async client helpers for correcting existing run metadata
+  without changing calculated scores.
+
 ## 0.3.0 — 2026-08-27
 
 - Added test-runner-style scored-case progress on stderr.
