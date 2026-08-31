@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -9,6 +10,9 @@ import numpy as np
 
 from .config import CorpusConfig
 from .process import s3_upload, sha256, write_json
+
+BLACKFACE_63_AMP_ID = "D3D21964-8E80-11EE-B9D1-0242AC120002"
+BLACKFACE_63_SIMPLE_AMP_ID = "blackface63-simple"
 
 
 def _amp_seed(base_seed: int, amp_id: str) -> int:
@@ -81,6 +85,12 @@ def _build_positions(
     for control in controls:
         if control["sampling"] == "fixed_time_effect_bypass":
             defaults[control["name"]] = 0.0
+        elif control["kind"] != "knob":
+            choices = [float(choice) for choice in control.get("choices", [0.0, 1.0])]
+            defaults[control["name"]] = min(
+                choices,
+                key=lambda choice: abs(choice - defaults[control["name"]]),
+            )
     nearest = min(
         range(count),
         key=lambda index: sum(
@@ -99,6 +109,35 @@ def _build_positions(
         }
         for position, index in enumerate(ordered_indices, start=1)
     ]
+
+
+def _derive_fixed_amp(
+    source: dict[str, Any],
+    *,
+    amp_id: str,
+    amp_name: str,
+    amp_index: int,
+    fixed_controls: dict[str, float],
+) -> dict[str, Any]:
+    derived = copy.deepcopy(source)
+    derived.update(
+        {
+            "amp_id": amp_id,
+            "amp_index": amp_index,
+            "amp_name": amp_name,
+            "renderer_amp_id": source["amp_id"],
+            "fixed_controls": dict(fixed_controls),
+        }
+    )
+    control_names = [str(control["name"]) for control in derived["controls"]]
+    unknown = sorted(set(fixed_controls) - set(control_names))
+    if unknown:
+        msg = f"cannot fix unknown controls: {', '.join(unknown)}"
+        raise ValueError(msg)
+    for position in derived["positions"]:
+        position["values"].update(fixed_controls)
+        position["vector"] = [position["values"][name] for name in control_names]
+    return derived
 
 
 def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
@@ -135,6 +174,16 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
                 ),
             }
         )
+    blackface = next(amp for amp in amps if amp["amp_id"] == BLACKFACE_63_AMP_ID)
+    amps.append(
+        _derive_fixed_amp(
+            blackface,
+            amp_id=BLACKFACE_63_SIMPLE_AMP_ID,
+            amp_name=BLACKFACE_63_SIMPLE_AMP_ID,
+            amp_index=max(int(amp["amp_index"]) for amp in amps) + 1,
+            fixed_controls={"Bright": 0.0, "Master": 0.5},
+        )
+    )
     amps.sort(key=lambda row: int(row["amp_index"]))
     manifest_path = config.root / "manifests" / "amps.json"
     manifest = {
@@ -149,11 +198,13 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
         "amps": amps,
     }
     write_json(manifest_path, manifest)
+    for amp in amps:
+        path = config.root / "positions" / f"{amp['amp_id']}.json"
+        write_json(path, amp)
     if upload:
         s3_upload(manifest_path, f"{config.s3_root}/manifests/amps.json")
         for amp in amps:
             path = config.root / "positions" / f"{amp['amp_id']}.json"
-            write_json(path, amp)
             s3_upload(path, f"{config.s3_root}/amps/{amp['amp_id']}/positions.json")
     return manifest_path
 

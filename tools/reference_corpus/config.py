@@ -28,7 +28,7 @@ DEFAULT_LOOP_SELECTION = (
 
 @dataclass(frozen=True, slots=True)
 class CorpusConfig:
-    root: Path = REPOSITORY_ROOT / "data" / "reference-corpus-v1"
+    root: Path = REPOSITORY_ROOT / "data" / "reference-corpus-clean"
     reference: Path = Path(
         "/Users/michalwarda/Projects/qlamp-tools/bias-x-wet-captures/dry/input.wav"
     )

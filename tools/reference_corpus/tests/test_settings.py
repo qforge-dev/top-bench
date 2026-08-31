@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
-from tools.reference_corpus.settings import _maximin_latin_hypercube
+from tools.reference_corpus.settings import (
+    _build_positions,
+    _derive_fixed_amp,
+    _maximin_latin_hypercube,
+)
 
 
 def test_latin_hypercube_is_reproducible_and_stratified() -> None:
@@ -13,3 +19,71 @@ def test_latin_hypercube_is_reproducible_and_stratified() -> None:
     normalized = (first - 0.05) / 0.9
     for column in normalized.T:
         assert sorted(np.floor(column * 10).astype(int)) == list(range(10))
+
+
+def test_factory_default_snaps_binary_controls_to_declared_choices() -> None:
+    amp = {
+        "controls": ["Gain", "Bright"],
+        "settings": {"default": {"values": [0.5, 0.061]}},
+    }
+    controls: list[dict[str, Any]] = [
+        {"name": "Gain", "kind": "knob", "sampling": "uniform_0_1"},
+        {
+            "name": "Bright",
+            "kind": "singleSwitch",
+            "sampling": "uniform_discrete",
+            "choices": [0.0, 1.0],
+        },
+    ]
+
+    positions = _build_positions(amp, controls, count=10, seed=42)
+
+    assert positions[0]["kind"] == "factory_default"
+    assert positions[0]["values"]["Bright"] == 0.0
+    assert {position["values"]["Bright"] for position in positions} <= {0.0, 1.0}
+
+
+def test_derived_amp_preserves_blackface_distribution_and_fixes_bright_and_master() -> None:
+    source = {
+        "amp_id": "blackface-source-id",
+        "amp_index": 19,
+        "amp_name": "Blackface 63",
+        "controls": [
+            {"index": 0, "name": "Volume"},
+            {"index": 5, "name": "Master"},
+            {"index": 6, "name": "Bright"},
+        ],
+        "positions": [
+            {
+                "position_id": "position-01",
+                "kind": "factory_default",
+                "values": {"Volume": 0.75, "Master": 0.3, "Bright": 1.0},
+                "vector": [0.75, 0.3, 1.0],
+            },
+            {
+                "position_id": "position-02",
+                "kind": "maximin_latin_hypercube",
+                "values": {"Volume": 0.2, "Master": 0.8, "Bright": 1.0},
+                "vector": [0.2, 0.8, 1.0],
+            },
+        ],
+    }
+
+    derived = _derive_fixed_amp(
+        source,
+        amp_id="blackface63-simple",
+        amp_name="blackface63-simple",
+        amp_index=49,
+        fixed_controls={"Bright": 0.0, "Master": 0.5},
+    )
+
+    assert derived["amp_id"] == "blackface63-simple"
+    assert derived["renderer_amp_id"] == "blackface-source-id"
+    assert derived["fixed_controls"] == {"Bright": 0.0, "Master": 0.5}
+    assert [position["values"]["Volume"] for position in derived["positions"]] == [0.75, 0.2]
+    assert all(position["values"]["Bright"] == 0.0 for position in derived["positions"])
+    assert all(position["values"]["Master"] == 0.5 for position in derived["positions"])
+    assert [position["vector"] for position in derived["positions"]] == [
+        [0.75, 0.5, 0.0],
+        [0.2, 0.5, 0.0],
+    ]

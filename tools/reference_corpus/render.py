@@ -41,7 +41,7 @@ def _chain_for_amp(
     template_path = config.mapper_root / "chains" / "dynasty-chime-amp-only.json"
     chain = copy.deepcopy(json.loads(template_path.read_text()))
     module = next(item for item in chain["sigPath"] if item.get("dspId") == "BiasOneAmp")
-    module["ampId"] = amp["amp_id"]
+    module["ampId"] = amp.get("renderer_amp_id", amp["amp_id"])
     module["param"] = [
         {"id": int(control["index"]), "value": float(position["values"][control["name"]])}
         for control in amp["controls"]
