@@ -468,7 +468,7 @@ h2 {
   padding: 28px 0;
   gap: 13px;
   align-items: end;
-  grid-template-columns: minmax(240px, 1fr) minmax(170px, 0.45fr) minmax(170px, 0.45fr) auto;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(150px, 0.4fr)) auto;
 }
 
 .filter-field {
@@ -708,7 +708,7 @@ tbody tr:last-child td {
 }
 
 .metric-column {
-  min-width: 170px;
+  min-width: 112px;
 }
 
 .rank-cell {
@@ -869,29 +869,34 @@ progress::-moz-progress-bar {
   font-size: 0.92rem;
 }
 
-.metric-baseline,
 .metric-comparison {
-  display: block;
-  margin-top: 3px;
+  display: inline-flex;
+  margin-top: 5px;
+  padding: 2px 6px;
+  border: 1px solid rgb(152 164 173 / 22%);
+  border-radius: 999px;
+  align-items: center;
+  background: rgb(152 164 173 / 8%);
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 0.54rem;
+  font-size: 0.57rem;
   line-height: 1.25;
   white-space: nowrap;
 }
 
-.metric-baseline {
-  color: var(--amber);
-}
-
 .metric-comparison {
   color: var(--text-muted);
+  cursor: help;
 }
 
 .metric-comparison.is-model-better {
+  border-color: rgb(139 212 80 / 28%);
+  background: rgb(139 212 80 / 9%);
   color: #8bd450;
 }
 
 .metric-comparison.is-baseline-better {
+  border-color: rgb(255 180 84 / 28%);
+  background: rgb(255 180 84 / 9%);
   color: #ffb454;
 }
 

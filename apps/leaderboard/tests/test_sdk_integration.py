@@ -102,9 +102,9 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
             msg = "model exploded"
             raise RuntimeError(msg)
 
-        with pytest.raises(ExceptionGroup) as raised:
+        with pytest.raises(RuntimeError, match="model exploded") as raised:
             await failed_run.run_async("integration-amp", broken_model)
-        assert "model exploded" in str(raised.value.exceptions[0])
+        assert "model exploded" in str(raised.value)
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"

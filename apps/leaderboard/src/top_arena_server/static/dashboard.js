@@ -3,9 +3,12 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const POLL_INTERVAL_MS = 2_000;
+  const DEFAULT_AMP_SCOPE = "normal";
+  const SIMPLE_AMP_IDS = new Set(["blackface63-simple"]);
 
   const elements = {
     ampFilter: document.querySelector("#amp-filter"),
+    ampScopeFilter: document.querySelector("#amp-scope-filter"),
     body: document.querySelector("#leaderboard-body"),
     chart: document.querySelector("#pareto-chart"),
     clearFilters: document.querySelector("#clear-filters"),
@@ -241,16 +244,28 @@
   }
 
   function comparisonLabel(modelValue, baselineValue, higherIsBetter = false) {
-    if (modelValue === null || baselineValue === null) return { label: "Comparison unavailable", className: "" };
-    if (modelValue === baselineValue) return { label: "Equal", className: "is-equal" };
-    const modelBetter = higherIsBetter ? modelValue > baselineValue : modelValue < baselineValue;
-    const subject = modelBetter ? "Model" : "NAM-A2-FULL";
-    const better = modelBetter ? modelValue : baselineValue;
-    const worse = modelBetter ? baselineValue : modelValue;
-    const percentage = worse === 0 ? null : (Math.abs(worse - better) / Math.abs(worse)) * 100;
-    const direction = higherIsBetter ? "higher" : "lower";
+    if (modelValue === null || baselineValue === null) {
+      return { label: "—", title: "NAM-A2-FULL comparison unavailable.", className: "" };
+    }
+    if (modelValue === baselineValue) {
+      return {
+        label: "0.0% =",
+        title: `Equal to NAM-A2-FULL ${formatScore(baselineValue)}.`,
+        className: "is-equal",
+      };
+    }
+    const difference = modelValue - baselineValue;
+    const modelBetter = higherIsBetter ? difference > 0 : difference < 0;
+    const direction = difference < 0 ? "lower" : "higher";
+    const arrow = difference < 0 ? "▼" : "▲";
+    const percentage = baselineValue === 0
+      ? null
+      : (Math.abs(difference) / Math.abs(baselineValue)) * 100;
+    const label = percentage === null ? arrow : `${percentage.toFixed(1)}% ${arrow}`;
+    const comparison = percentage === null ? direction : `${percentage.toFixed(1)}% ${direction}`;
     return {
-      label: percentage === null ? `${subject} better` : `${subject} ${percentage.toFixed(1)}% ${direction}`,
+      label,
+      title: `${comparison} than NAM-A2-FULL ${formatScore(baselineValue)}.`,
       className: modelBetter ? "is-model-better" : "is-baseline-better",
     };
   }
@@ -259,9 +274,11 @@
     const cell = createElement("td", "numeric-cell");
     cell.dataset.label = label;
     cell.append(createElement("strong", `metric-primary${summary.mean === null ? " metric-empty" : ""}`, formatScore(summary.mean)));
-    cell.append(createElement("span", "metric-baseline", `NAM-A2-FULL ${formatScore(baseline.mean)}`));
     const comparison = comparisonLabel(summary.mean, baseline.mean, higherIsBetter);
-    cell.append(createElement("span", `metric-comparison ${comparison.className}`, comparison.label));
+    const pill = createElement("span", `metric-comparison ${comparison.className}`, comparison.label);
+    pill.title = comparison.title;
+    pill.setAttribute("aria-label", comparison.title);
+    cell.append(pill);
     return cell;
   }
 
@@ -302,11 +319,26 @@
     return (Number(left) - Number(right)) * direction;
   }
 
+  function ampScope() {
+    const value = elements.ampScopeFilter?.value;
+    return ["normal", "simple", "all"].includes(value) ? value : DEFAULT_AMP_SCOPE;
+  }
+
+  function matchesAmpScope(ampId) {
+    const simple = SIMPLE_AMP_IDS.has(ampId);
+    const scope = ampScope();
+    return scope === "all" || (scope === "simple" ? simple : !simple);
+  }
+
+  function runsInScope() {
+    return state.runs.filter((run) => matchesAmpScope(run.ampId));
+  }
+
   function selectedRuns() {
     const ampId = elements.ampFilter?.value || "";
     const creator = elements.creatorFilter?.value || "";
     const search = (elements.modelFilter?.value || "").trim().toLocaleLowerCase();
-    return state.runs.filter((run) => {
+    return runsInScope().filter((run) => {
       const searchable = `${run.name} ${run.description} ${run.creator}`.toLocaleLowerCase();
       return (!ampId || run.ampId === ampId)
         && (!creator || run.creator === creator)
@@ -343,7 +375,7 @@
       return;
     }
 
-    const ranks = rankMap(state.runs);
+    const ranks = rankMap(runsInScope());
     for (const run of sortedRuns(runs, ranks)) {
       const row = createElement("tr");
       row.dataset.runId = run.id;
@@ -397,7 +429,10 @@
     const select = elements.ampFilter;
     if (!select) return;
     const previous = select.value;
-    const expected = [{ id: "", name: "All amps" }, ...state.amps];
+    const expected = [
+      { id: "", name: "All amps" },
+      ...state.amps.filter((amp) => matchesAmpScope(amp.id)),
+    ];
     const current = [...select.options].map((option) => ({ id: option.value, name: option.textContent }));
     if (expected.length === current.length
       && expected.every((amp, index) => amp.id === current[index].id && amp.name === current[index].name)) {
@@ -637,7 +672,10 @@
       elements.summaryCompleted.textContent = String(state.runs.filter((run) => ["completed", "finished"].includes(run.status)).length);
     }
     if (elements.clearFilters) {
-      elements.clearFilters.disabled = !elements.ampFilter?.value && !elements.creatorFilter?.value && !elements.modelFilter?.value;
+      elements.clearFilters.disabled = ampScope() === DEFAULT_AMP_SCOPE
+        && !elements.ampFilter?.value
+        && !elements.creatorFilter?.value
+        && !elements.modelFilter?.value;
     }
   }
 
@@ -702,10 +740,17 @@
     input?.addEventListener("change", render);
   }
 
+  elements.ampScopeFilter?.addEventListener("change", () => {
+    updateAmpSelect();
+    render();
+  });
+
   elements.clearFilters?.addEventListener("click", () => {
+    if (elements.ampScopeFilter) elements.ampScopeFilter.value = DEFAULT_AMP_SCOPE;
     if (elements.ampFilter) elements.ampFilter.value = "";
     if (elements.creatorFilter) elements.creatorFilter.value = "";
     if (elements.modelFilter) elements.modelFilter.value = "";
+    updateAmpSelect();
     elements.modelFilter?.focus();
     render();
   });

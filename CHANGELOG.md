@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added normal/simple/all amp filtering to the Pareto chart and leaderboard, with
+  `blackface63-simple` classified as the simple amp.
+- Replaced verbose leaderboard baseline comparisons with compact percentage pills and
+  full NAM-A2-FULL details on hover.
+- Added one random, untimed, unscored callback warm-up before benchmark inference so
+  model-loading cost does not distort render-speed measurements.
 - Added optional per-run amp control-count overrides at submission time.
 - Added typed sync and async client helpers for correcting existing run metadata
   without changing calculated scores.

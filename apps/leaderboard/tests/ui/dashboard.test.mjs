@@ -58,6 +58,11 @@ function markup(payload) {
     <div class="live-indicator"></div><span id="connection-label"></span>
     <span id="refresh-status"></span><span id="result-count"></span>
     <span id="summary-run-count"></span><span id="summary-completed-count"></span>
+    <select id="amp-scope-filter">
+      <option value="normal" selected>Normal amps</option>
+      <option value="simple">Simple amps</option>
+      <option value="all">All amps</option>
+    </select>
     <select id="amp-filter"><option value="">All amps</option></select>
     <select id="creator-filter"><option value="">All creators</option></select>
     <input id="model-filter"><button id="clear-filters" type="button"></button>
@@ -133,8 +138,64 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   );
   assert.equal(selectedRow.querySelectorAll(".metric-details").length, 0);
   const esrCell = selectedRow.querySelector('td[data-label="ESR"]');
-  assert.match(esrCell.textContent, /NAM-A2-FULL\s+0\.25/);
-  assert.match(esrCell.textContent, /Model 20\.0% lower/);
+  assert.equal(esrCell.querySelector(".metric-comparison").textContent, "20.0% ▼");
+  assert.equal(
+    esrCell.querySelector(".metric-comparison").title,
+    "20.0% lower than NAM-A2-FULL 0.25.",
+  );
+  assert.doesNotMatch(esrCell.textContent, /NAM-A2-FULL/);
+});
+
+test("amp set defaults to normal and switches graph, list, and amp picker together", async () => {
+  const payload = {
+    runs: [
+      run("run-normal", "Normal Model", "pg-clean", "PG Clean"),
+      run("run-simple", "Simple Model", "blackface63-simple", "Blackface 63 Simple"),
+    ],
+    amps: [
+      { id: "pg-clean", name: "PG Clean", amp_type: "guitar", control_names: [] },
+      { id: "blackface63-simple", name: "Blackface 63 Simple", amp_type: "guitar", control_names: [] },
+    ],
+  };
+  const dom = new JSDOM(markup(payload), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  dom.window.setInterval = () => 1;
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  const scope = document.querySelector("#amp-scope-filter");
+  const amp = document.querySelector("#amp-filter");
+  assert.equal(scope.value, "normal");
+  assert.deepEqual(
+    [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
+    ["run-normal"],
+  );
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 1);
+  assert.deepEqual([...amp.options].map((option) => option.value), ["", "pg-clean"]);
+
+  scope.value = "simple";
+  scope.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.deepEqual(
+    [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
+    ["run-simple"],
+  );
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 1);
+  assert.deepEqual([...amp.options].map((option) => option.value), ["", "blackface63-simple"]);
+
+  scope.value = "all";
+  scope.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(document.querySelectorAll("#leaderboard-body tr").length, 2);
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 2);
+
+  document.querySelector("#clear-filters").click();
+  assert.equal(scope.value, "normal");
+  assert.deepEqual(
+    [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
+    ["run-normal"],
+  );
 });
 
 test("live progress refreshes do not replace the Pareto graph", async () => {

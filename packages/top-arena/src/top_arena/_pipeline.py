@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import logging
 import os
+import secrets
 import time
 import uuid
 from contextlib import suppress
@@ -97,10 +98,11 @@ class BenchmarkRun:
         self._cache_locks = {}
         try:
             run_id = await self._gateway.create_run(self._metadata, amp_id)
+            cases = await self._gateway.get_manifest(amp_id)
+            await self._warm_up_model(run_id, cases, callback)
             reporter.start(self._metadata.name, amp_id)
             completion_task = asyncio.create_task(self._wait_for_result(run_id, reporter))
             await self._gateway.emit_event(run_id, "run.started", payload={"amp_id": amp_id})
-            cases = await self._gateway.get_manifest(amp_id)
             await self._execute_pipeline(run_id, cases, callback)
             await self._gateway.finish_run(run_id)
             await self._gateway.emit_event(run_id, "run.finish_requested")
@@ -144,6 +146,23 @@ class BenchmarkRun:
                 await asyncio.sleep(0.05 * (attempt + 1))
             else:
                 return
+
+    async def _warm_up_model(
+        self,
+        run_id: str,
+        cases: tuple[BenchmarkCase, ...],
+        callback: ModelCallback,
+    ) -> None:
+        if not cases:
+            return
+        case = secrets.choice(cases)
+        await self._gateway.emit_event(run_id, "inference.warmup_started", case.id)
+        dry_path = await self._get_dry_audio(run_id, case)
+        candidate = await asyncio.to_thread(callback, dry_path, case.positions)
+        if inspect.isawaitable(candidate):
+            candidate = await candidate
+        _ = await asyncio.to_thread(_resolve_output_path, candidate, case.id)
+        await self._gateway.emit_event(run_id, "inference.warmup_completed", case.id)
 
     async def _execute_pipeline(
         self,

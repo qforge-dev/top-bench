@@ -25,11 +25,31 @@
 {% macro metric_summary(metric, baseline) -%}
   {% set values = metric|default({}, true) %}
   {% set baseline_values = baseline|default({}, true) %}
+  {% set model_value = values.mean|default(none) %}
+  {% set baseline_value = baseline_values.mean|default(none) %}
   <strong class="metric-primary">{{ number(values.mean) }}</strong>
-  <span class="metric-baseline">NAM-A2-FULL {{ number(baseline_values.mean) }}</span>
+  {% if model_value is not none and baseline_value is not none %}
+    {% if model_value|float == baseline_value|float %}
+      <span class="metric-comparison is-equal" title="Equal to NAM-A2-FULL {{ "%.4f"|format(baseline_value|float) }}.">0.0% =</span>
+    {% elif baseline_value|float != 0 %}
+      {% set percentage = (((model_value|float) - (baseline_value|float)) / ((baseline_value|float)|abs)) * 100 %}
+      {% if percentage < 0 %}
+        <span class="metric-comparison is-model-better" title="{{ "%.1f"|format(percentage|abs) }}% lower than NAM-A2-FULL {{ "%.4f"|format(baseline_value|float) }}.">{{ "%.1f"|format(percentage|abs) }}% ▼</span>
+      {% else %}
+        <span class="metric-comparison is-baseline-better" title="{{ "%.1f"|format(percentage|abs) }}% higher than NAM-A2-FULL {{ "%.4f"|format(baseline_value|float) }}.">{{ "%.1f"|format(percentage|abs) }}% ▲</span>
+      {% endif %}
+    {% elif model_value|float < baseline_value|float %}
+      <span class="metric-comparison is-model-better" title="Lower than NAM-A2-FULL {{ "%.4f"|format(baseline_value|float) }}.">▼</span>
+    {% else %}
+      <span class="metric-comparison is-baseline-better" title="Higher than NAM-A2-FULL {{ "%.4f"|format(baseline_value|float) }}.">▲</span>
+    {% endif %}
+  {% else %}
+    <span class="metric-comparison" title="NAM-A2-FULL comparison unavailable.">—</span>
+  {% endif %}
 {%- endmacro %}
 
 {% set initial_runs = runs|default([], true) %}
+{% set normal_runs = initial_runs|rejectattr("amp_id", "equalto", "blackface63-simple")|list %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -42,8 +62,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css?v=20260831-live-tables">
-    <script defer src="/static/dashboard.js?v=20260831-utc-dates"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260831-amp-scope">
+    <script defer src="/static/dashboard.js?v=20260831-amp-scope"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -110,10 +130,18 @@
             </span>
           </label>
           <label class="filter-field">
+            <span>Amp set</span>
+            <select id="amp-scope-filter">
+              <option value="normal" selected>Normal amps</option>
+              <option value="simple">Simple amps</option>
+              <option value="all">All amps</option>
+            </select>
+          </label>
+          <label class="filter-field">
             <span>Amp</span>
             <select id="amp-filter">
               <option value="">All amps</option>
-              {% for amp in amps|default([], true) %}
+              {% for amp in amps|default([], true) if amp.id != "blackface63-simple" %}
                 <option value="{{ amp.id }}">{{ amp.name }}</option>
               {% endfor %}
             </select>
@@ -128,7 +156,7 @@
         </div>
 
         <div class="table-meta">
-          <p id="result-count" aria-live="polite">{{ initial_runs|length }} runs</p>
+          <p id="result-count" aria-live="polite">{{ normal_runs|length }} runs{% if normal_runs|length != initial_runs|length %} of {{ initial_runs|length }}{% endif %}</p>
           <p><span class="lower-is-better" aria-hidden="true">↓</span> Lower error is better</p>
         </div>
 
@@ -178,7 +206,7 @@
               </tr>
             </thead>
             <tbody id="leaderboard-body">
-              {% for run in initial_runs %}
+              {% for run in normal_runs %}
                 {% set metrics = run.metrics|default({}, true) %}
                 {% set nam_metrics = metrics.nam_a2_full|default({}, true) %}
                 {% set realtime = metrics.realtime_x|default({}, true) %}

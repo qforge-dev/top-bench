@@ -90,6 +90,12 @@ The callback is invoked as `callback(dry_audio, positions)`:
 - `positions` is an immutable matrix of normalized control values for that case.
 - the return value is a path to the model's wet output for the same input.
 
+Before timed inference begins, the SDK invokes the callback once with a randomly selected
+benchmark case to warm up model loading and runtime initialization. That warm-up render is
+not uploaded, scored, included in per-case realtime measurements, or included in the
+reported run timer. The callback is therefore invoked once more than the number of scored
+benchmark cases.
+
 Stereo output is folded to mono by the scoring service, and output at a different
 sample rate is resampled to the 48 kHz reference rate. Returning audio with the same
 duration and alignment as the dry input produces the most meaningful comparison.
@@ -138,7 +144,7 @@ and calculated audio scores cannot be overwritten.
 
 ## How the pipeline works
 
-The SDK uses three bounded stages:
+After the untimed warm-up render, the SDK uses three bounded stages:
 
 1. Download benchmark inputs and verify/cache them by content hash.
 2. Invoke the model callback and measure its wall-clock render speed.

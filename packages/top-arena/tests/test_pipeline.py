@@ -28,6 +28,7 @@ class FakeGateway(BenchmarkGateway):
     downloaded: list[str] = field(default_factory=list)
     uploaded: list[str] = field(default_factory=list)
     uploaded_formats: list[tuple[str, str, str, str, int]] = field(default_factory=list)
+    uploaded_realtime: list[tuple[str, float]] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
     last_download_finished_at: float = 0.0
     first_upload_finished_at: float | None = None
@@ -74,7 +75,8 @@ class FakeGateway(BenchmarkGateway):
         wet_path: Path,
         realtime_x: float,
     ) -> None:
-        del run_id, realtime_x
+        del run_id
+        self.uploaded_realtime.append((case_id, realtime_x))
         with sf.SoundFile(wet_path) as audio:
             self.uploaded_formats.append(
                 (case_id, wet_path.suffix, audio.format, audio.subtype, audio.samplerate)
@@ -103,13 +105,17 @@ class FakeGateway(BenchmarkGateway):
         )
 
 
-async def test_pipeline_overlaps_download_inference_and_upload(tmp_path: Path) -> None:
+async def test_pipeline_overlaps_download_inference_and_upload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cases = (
         BenchmarkCase("slow", ((0.0,),), "dry/slow.wav", "a" * 64),
         BenchmarkCase("fast-1", ((0.2,),), "dry/fast-1.wav", "b" * 64),
         BenchmarkCase("fast-2", ((0.4,),), "dry/fast-2.wav", "c" * 64),
     )
     gateway = FakeGateway(cases)
+    monkeypatch.setattr("top_arena._pipeline.secrets.choice", lambda values: values[1])
     metadata = BenchmarkMetadata(
         name="super-model-v1",
         creator="test-suite",
@@ -144,6 +150,51 @@ async def test_pipeline_overlaps_download_inference_and_upload(tmp_path: Path) -
     assert "upload.completed" in gateway.events
 
 
+async def test_pipeline_warms_model_with_random_case_without_uploading_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cases = (
+        BenchmarkCase("case-1", ((0.1,),), "dry/one.wav", "1" * 64, duration_seconds=0.01),
+        BenchmarkCase("case-2", ((0.9,),), "dry/two.wav", "2" * 64, duration_seconds=0.01),
+    )
+    gateway = FakeGateway(cases)
+    monkeypatch.setattr("top_arena._pipeline.secrets.choice", lambda values: values[1])
+    run = BenchmarkRun(
+        gateway=gateway,
+        metadata=BenchmarkMetadata(
+            name="warm-model",
+            creator="test-suite",
+            unique_positions_used=2,
+            audio_duration_sum=0.02,
+            turns=1,
+            training_time=1.0,
+            description="warm-up test",
+            parameter_count=1,
+        ),
+        cache_dir=tmp_path / "cache",
+    )
+    calls: list[tuple[tuple[float, ...], ...]] = []
+
+    def model(audio_path: Path, positions: tuple[tuple[float, ...], ...]) -> Path:
+        calls.append(positions)
+        wet_path = tmp_path / f"wet-{len(calls)}.wav"
+        wet_path.write_bytes(audio_path.read_bytes())
+        return wet_path
+
+    await run.run_async("demo-amp", model)
+
+    assert calls[0] == cases[1].positions
+    assert len(calls) == len(cases) + 1
+    assert calls.count(cases[1].positions) == 2
+    assert set(gateway.uploaded) == {case.id for case in cases}
+    assert len(gateway.uploaded_realtime) == len(cases)
+    assert gateway.events.count("inference.warmup_started") == 1
+    assert gateway.events.count("inference.warmup_completed") == 1
+    assert gateway.events.count("inference.started") == len(cases)
+    assert gateway.events.count("inference.completed") == len(cases)
+
+
 async def test_client_failure_notification_retries_transient_errors(tmp_path: Path) -> None:
     case = BenchmarkCase("case-1", ((0.0,),), "dry/input.wav", "f" * 64)
     gateway = FakeGateway((case,), client_failure_errors_remaining=2)
@@ -166,7 +217,7 @@ async def test_client_failure_notification_retries_transient_errors(tmp_path: Pa
         msg = "model failed"
         raise RuntimeError(msg)
 
-    with pytest.raises(ExceptionGroup):
+    with pytest.raises(RuntimeError, match="model failed"):
         await run.run_async("demo-amp", broken_model)
 
     assert gateway.client_failure_errors_remaining == 0

@@ -114,9 +114,10 @@ metadata definitions, pipeline options, caching, error behavior, and result fiel
 [`examples/passthrough_benchmark.py`](examples/passthrough_benchmark.py) is a runnable
 end-to-end smoke test. Release changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
-The client uses bounded download → inference → upload queues. Each stage overlaps the
-others, dry files are cached by content hash, and every stage transition is sent to the
-server event log. `realtime_x` is audio duration divided by model wall time.
+The client first renders one randomly selected input as an untimed, unscored model warm-up,
+then uses bounded download → inference → upload queues. Each stage overlaps the others,
+dry files are cached by content hash, and every stage transition is sent to the server
+event log. `realtime_x` is audio duration divided by timed model wall time.
 Speed is higher-is-better and is evaluated against a 31x NAM-FULL target; 15.5x is the
 acceptable floor. Merely exceeding 1x is not classified as a strength.
 
