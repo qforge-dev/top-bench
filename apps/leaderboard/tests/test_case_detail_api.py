@@ -206,6 +206,15 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert "Listen side by side" not in direct_page.text
         assert "Windowed analysis" not in direct_page.text
 
+        amp_page = await client.get("/amps/detail-amp")
+        amp_page.raise_for_status()
+        assert "2 positions · normalized inputs from 0 to 1" in amp_page.text
+        assert amp_page.text.count("<span>Position</span>") == 2
+        assert amp_page.text.count('class="amp-parameter-order"') == 6
+        assert 'data-label="volume"' in amp_page.text
+        assert 'title="0.1">0.100000</span>' in amp_page.text
+        assert 'title="0.7">0.700000</span>' in amp_page.text
+
         first_response = await client.get(f"/api/v1/runs/{run_id}/cases/{first_id}/detail")
         first_response.raise_for_status()
         first = first_response.json()

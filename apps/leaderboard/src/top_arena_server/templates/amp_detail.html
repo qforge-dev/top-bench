@@ -8,7 +8,7 @@
     <title>{{ amp.name }} results · Top Arena</title>
     <meta name="description" content="Compare every benchmarked model for {{ amp.name }}.">
     <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
-    <link rel="stylesheet" href="/static/amp_detail.css?v=20260901-scrollable-tables">
+    <link rel="stylesheet" href="/static/amp_detail.css?v=20260901-amp-parameters">
     <script defer src="/static/amp_detail.js?v=20260831-utc-dates"></script>
   </head>
   <body class="amp-page">
@@ -36,6 +36,66 @@
           <span id="amp-run-count">{{ runs|length }} model runs</span>
         </p>
       </header>
+
+      <section id="amp-parameters" class="amp-section amp-parameters" aria-labelledby="parameters-title">
+        <header class="amp-section-heading">
+          <div>
+            <p class="amp-section-label">Amp definition</p>
+            <h2 id="parameters-title">Parameters and benchmark values</h2>
+          </div>
+          <p>{{ amp_positions|length }} position{% if amp_positions|length != 1 %}s{% endif %} · normalized inputs from 0 to 1</p>
+        </header>
+        {% if amp.control_names and amp_positions %}
+          <div class="amp-parameter-frame" role="region" aria-label="Scrollable amp parameter values" tabindex="0">
+            <table class="amp-parameter-table">
+              <caption class="sr-only">Ordered parameters and benchmark position values for {{ amp.name }}.</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Position</th>
+                  {% for control_name in amp.control_names %}
+                    <th scope="col">
+                      <span class="amp-parameter-order">{{ "%02d"|format(loop.index) }}</span>
+                      {{ control_name }}
+                    </th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for position in amp_positions %}
+                  {% for step_values in position.steps %}
+                    {% set step_number = loop.index %}
+                    <tr>
+                      <th scope="row">
+                        <span>Position</span>
+                        {{ "%02d"|format(position.number) }}
+                        {% if position.steps|length > 1 %}<small>Step {{ step_number }}</small>{% endif %}
+                      </th>
+                      {% for control_name in amp.control_names %}
+                        <td data-label="{{ control_name }}">
+                          {% if loop.index0 < step_values|length %}
+                            <span title="{{ step_values[loop.index0] }}">{{ "%.6f"|format(step_values[loop.index0]) }}</span>
+                          {% else %}
+                            <span aria-label="Value unavailable">—</span>
+                          {% endif %}
+                        </td>
+                      {% endfor %}
+                    </tr>
+                  {% endfor %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% elif amp.control_names %}
+          <ol class="amp-parameter-list">
+            {% for control_name in amp.control_names %}
+              <li><span>{{ "%02d"|format(loop.index) }}</span>{{ control_name }}</li>
+            {% endfor %}
+          </ol>
+          <p class="amp-empty">No benchmark position values are available.</p>
+        {% else %}
+          <p class="amp-empty">No parameter metadata is available for this amp.</p>
+        {% endif %}
+      </section>
 
       <section class="amp-section" aria-labelledby="standings-title">
         <header class="amp-section-heading">

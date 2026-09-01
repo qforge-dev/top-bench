@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added ordered amp parameter names and every stored benchmark-position value to amp
+  detail pages.
 - Restored sortable mobile tables inside vertically and horizontally scrollable regions
   on leaderboard and amp-detail pages.
 - Added normal/simple/all amp filtering to the Pareto chart and leaderboard, with

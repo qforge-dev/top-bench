@@ -209,6 +209,13 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert ">Started (UTC)<" in amp_page_response.text
             assert 'data-chart-mode="positions"' in amp_page_response.text
             assert 'data-chart-mode="budget"' in amp_page_response.text
+            assert 'id="amp-parameters"' in amp_page_response.text
+            assert "Parameters and benchmark values" in amp_page_response.text
+            assert "1 position · normalized inputs from 0 to 1" in amp_page_response.text
+            assert 'class="amp-parameter-order">01</span>' in amp_page_response.text
+            assert "volume" in amp_page_response.text
+            assert "bright" in amp_page_response.text
+            assert 'title="0.0">0.000000</span>' in amp_page_response.text
             assert (await client.get("/amps/not-a-real-amp")).status_code == 404
 
             leaderboard_response = await client.get("/api/v1/leaderboard")

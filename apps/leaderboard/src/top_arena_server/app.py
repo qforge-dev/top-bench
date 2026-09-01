@@ -863,8 +863,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def amp_detail(request: Request, amp_id: str) -> Response:
         async with database.session() as session:
             amp = await session.get(Amp, amp_id)
+            benchmark_cases = (
+                await session.scalars(
+                    select(BenchmarkCase)
+                    .where(BenchmarkCase.amp_id == amp_id)
+                    .order_by(BenchmarkCase.position_index, BenchmarkCase.chunk_index)
+                )
+            ).all()
         if amp is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "amp not found")
+        position_matrices: dict[int, list[list[float]]] = {}
+        for benchmark_case in benchmark_cases:
+            position_matrices.setdefault(
+                benchmark_case.position_index,
+                benchmark_case.position_matrix,
+            )
+        amp_positions = [
+            {"number": position_index + 1, "steps": matrix}
+            for position_index, matrix in position_matrices.items()
+        ]
         runs = await _leaderboard_runs(services, amp_id=amp_id)
         serialized_runs = [run.model_dump(mode="json") for run in runs]
         serialized_amp = AmpResponse.model_validate(amp).model_dump(mode="json")
@@ -873,6 +890,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             name="amp_detail.html",
             context={
                 "amp": serialized_amp,
+                "amp_positions": amp_positions,
                 "runs": serialized_runs,
                 "amp_page": {"amp": serialized_amp, "runs": serialized_runs},
             },

@@ -104,6 +104,97 @@
   text-align: right;
 }
 
+.amp-parameter-frame {
+  max-height: 430px;
+  overflow: auto;
+  scrollbar-color: #38434e var(--panel);
+}
+
+.amp-parameter-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.amp-parameter-table th,
+.amp-parameter-table td {
+  min-width: 126px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--canvas);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.amp-parameter-table thead th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  border-bottom-color: var(--line);
+  background: #0b0e13;
+  color: var(--text);
+  font-size: 0.68rem;
+}
+
+.amp-parameter-table th:first-child {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  min-width: 94px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.amp-parameter-table thead th:first-child { z-index: 3; }
+
+.amp-parameter-table tbody tr:last-child th,
+.amp-parameter-table tbody tr:last-child td { border-bottom: 0; }
+
+.amp-parameter-table tbody th > span,
+.amp-parameter-order {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.amp-parameter-table tbody th small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.57rem;
+  font-weight: 500;
+}
+
+.amp-parameter-table td { color: var(--text); }
+
+.amp-parameter-list {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.amp-parameter-list li {
+  padding: 14px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.amp-parameter-list li span {
+  margin-right: 10px;
+  color: var(--text-muted);
+}
+
 .amp-standings {
   max-width: none;
   padding: 0;
@@ -488,6 +579,14 @@
   .amp-meta { flex-wrap: wrap; white-space: normal; }
   .amp-section-heading > p { text-align: left; }
   .amp-model-search, .amp-model-search input { width: 100%; }
+
+  .amp-parameter-frame {
+    width: 100%;
+    max-height: min(58dvh, 480px);
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
 
   .amp-standing {
     gap: 9px;
