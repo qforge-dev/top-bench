@@ -177,7 +177,7 @@ a {
 
 main,
 footer {
-  width: min(100% - 40px, 1480px);
+  width: min(calc(100% - 40px), 1480px);
   margin-inline: auto;
 }
 
@@ -981,7 +981,7 @@ footer {
   .site-header,
   main,
   footer {
-    width: min(100% - 26px, 1480px);
+    width: min(calc(100% - 26px), 1480px);
   }
 
   .site-header {
@@ -1190,7 +1190,7 @@ footer {
 /* Compact benchmark screens */
 .site-header,
 main {
-  width: min(100% - 24px, 1800px);
+  width: min(calc(100% - 24px), 1800px);
 }
 
 main {
@@ -1311,7 +1311,7 @@ td {
 @media (max-width: 720px) {
   .site-header,
   main {
-    width: min(100% - 20px, 1800px);
+    width: min(calc(100% - 20px), 1800px);
   }
 
   main {
@@ -1326,6 +1326,10 @@ td {
     padding-top: 24px;
   }
 
+  table {
+    min-width: 0;
+  }
+
   tbody tr {
     gap: 0 12px;
   }
@@ -1335,6 +1339,27 @@ td {
   }
 
   .model-cell > strong {
-    max-width: none;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .model-link {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .table-frame {
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  tbody tr {
+    max-width: 100%;
+  }
+
+  td {
+    min-width: 0;
+    max-width: 100%;
   }
 }

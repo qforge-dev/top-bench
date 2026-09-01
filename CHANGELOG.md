@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed mobile table cards so desktop minimum widths and long model names no longer
+  shrink or overflow leaderboard and amp-detail pages.
 - Added normal/simple/all amp filtering to the Pareto chart and leaderboard, with
   `blackface63-simple` classified as the simple amp.
 - Replaced verbose leaderboard baseline comparisons with compact percentage pills and
