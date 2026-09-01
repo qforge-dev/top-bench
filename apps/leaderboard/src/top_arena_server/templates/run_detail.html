@@ -9,7 +9,7 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260831-live-details">
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260901-run-description">
     <script defer src="/static/case_detail.js?v=20260831-utc-dates"></script>
   </head>
   <body class="detail-page">
@@ -80,6 +80,7 @@
                 <span aria-hidden="true">·</span>
                 <span id="run-amp">—</span>
               </p>
+              <p id="run-description" class="run-description">{{ run_description|default("No model description was supplied.", true) }}</p>
             </section>
 
             <section class="lab-sidebar-block case-sidebar" aria-labelledby="case-title">

@@ -337,6 +337,10 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
     "/waveform/case-a",
   ]);
   assert.equal(document.querySelector("#run-name").textContent, "Velvet Drive");
+  assert.equal(
+    document.querySelector("#run-description").textContent,
+    "A compact recurrent amp model.",
+  );
   assert.equal(document.querySelector("#run-started").getAttribute("datetime"), "2026-08-31T12:34:56Z");
   assert.equal(document.querySelector("#run-started").textContent, "31.08.2026 12:34");
   assert.equal(document.title, "Velvet Drive · Case detail · Top Arena");

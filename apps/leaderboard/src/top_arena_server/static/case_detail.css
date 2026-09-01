@@ -1107,6 +1107,15 @@
   font-size: 0.55rem;
 }
 
+.lab-sidebar .run-description {
+  margin: 12px 0 0;
+  color: #909ba4;
+  font-size: 0.66rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .detail-status {
   min-height: 17px;
   padding: 1px 6px;

@@ -182,7 +182,10 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert f'data-run-id="{run_id}"' in direct_page.text
         assert f'data-case-id="{last_id}"' in direct_page.text
         assert "case-detail-model" in direct_page.text
+        assert 'id="run-description"' in direct_page.text
+        assert "Case detail API test" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
+        assert "/static/case_detail.css?v=20260901-run-description" in direct_page.text
         assert "/static/case_detail.js?v=20260831-utc-dates" in direct_page.text
         assert 'id="run-started"' in direct_page.text
         assert "Benchmark started · UTC" in direct_page.text
