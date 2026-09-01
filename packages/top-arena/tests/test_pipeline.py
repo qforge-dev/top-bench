@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,8 +29,8 @@ class FakeGateway(BenchmarkGateway):
     uploaded_formats: list[tuple[str, str, str, str, int]] = field(default_factory=list)
     uploaded_realtime: list[tuple[str, float]] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
-    last_download_finished_at: float = 0.0
-    first_upload_finished_at: float | None = None
+    upload_finished: asyncio.Event = field(default_factory=asyncio.Event)
+    overlap_observed: bool = False
     client_failure_errors_remaining: int = 0
 
     async def create_run(self, metadata: BenchmarkMetadata, amp_id: str) -> str:
@@ -43,7 +42,12 @@ class FakeGateway(BenchmarkGateway):
         return self.cases
 
     async def download_dry(self, case: BenchmarkCase, destination: Path) -> None:
-        await asyncio.sleep(0.08 if case.id == "slow" else 0.005)
+        if case.id == "slow":
+            async with asyncio.timeout(1):
+                await self.upload_finished.wait()
+            self.overlap_observed = True
+        else:
+            await asyncio.sleep(0.005)
         sf.write(
             destination,
             np.zeros(480, dtype=np.float32),
@@ -52,7 +56,6 @@ class FakeGateway(BenchmarkGateway):
             subtype="PCM_24",
         )
         self.downloaded.append(case.id)
-        self.last_download_finished_at = time.monotonic()
 
     async def emit_event(
         self,
@@ -83,8 +86,7 @@ class FakeGateway(BenchmarkGateway):
             )
         await asyncio.sleep(0.001)
         self.uploaded.append(case_id)
-        if self.first_upload_finished_at is None:
-            self.first_upload_finished_at = time.monotonic()
+        self.upload_finished.set()
 
     async def finish_run(self, run_id: str) -> None:
         del run_id
@@ -143,8 +145,7 @@ async def test_pipeline_overlaps_download_inference_and_upload(
 
     assert result.status == "completed"
     assert set(gateway.uploaded) == {case.id for case in cases}
-    assert gateway.first_upload_finished_at is not None
-    assert gateway.first_upload_finished_at < gateway.last_download_finished_at
+    assert gateway.overlap_observed
     assert "download.started" in gateway.events
     assert "inference.completed" in gateway.events
     assert "upload.completed" in gateway.events
