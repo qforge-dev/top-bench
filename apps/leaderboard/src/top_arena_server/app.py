@@ -467,6 +467,23 @@ async def _leaderboard_etag(services: Services, query: str) -> str:
     return f'"{hashlib.sha256(revision).hexdigest()}"'
 
 
+def _etag_matches(header: str, etag: str) -> bool:
+    expected = etag.strip('"')
+    for raw_value in header.split(","):
+        candidate = raw_value.strip()
+        if candidate == "*":
+            return True
+        candidate = candidate.removeprefix("W/")
+        candidate = candidate.strip('"')
+        for encoding in ("br", "gzip", "zstd"):
+            if candidate.endswith(f"-{encoding}"):
+                candidate = candidate[: -(len(encoding) + 1)]
+                break
+        if candidate == expected:
+            return True
+    return False
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     selected_settings = settings or Settings()
     database = Database(selected_settings.database_url)
@@ -1004,7 +1021,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Cache-Control": "public, no-cache",
             "ETag": etag,
         }
-        if etag in {value.strip() for value in request.headers.get("if-none-match", "").split(",")}:
+        if _etag_matches(request.headers.get("if-none-match", ""), etag):
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
         for key, value in cache_headers.items():
             response.headers[key] = value

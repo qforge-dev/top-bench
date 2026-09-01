@@ -113,6 +113,14 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
             )
             assert unchanged.status_code == 304
             assert unchanged.content == b""
+            etag_digest = etag.strip('"')
+            caddy_etag = f'W/"{etag_digest}-gzip"'
+            compressed_unchanged = await client.get(
+                "/api/v1/leaderboard",
+                params=default_parameters,
+                headers={"If-None-Match": caddy_etag},
+            )
+            assert compressed_unchanged.status_code == 304
             assert set(first["chart_runs"][0]) == {
                 "id",
                 "name",
