@@ -865,9 +865,16 @@
     try {
       const requestedUrl = leaderboardUrl();
       const response = await fetch(requestedUrl, {
-        cache: "no-store",
+        cache: "no-cache",
         headers: { Accept: "application/json" },
       });
+      if (response.status === 304) {
+        setConnection(true);
+        if (elements.refreshStatus) {
+          elements.refreshStatus.textContent = `Unchanged · checked ${new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())}`;
+        }
+        return;
+      }
       if (!response.ok) {
         throw new Error(`Leaderboard request failed with ${response.status}`);
       }

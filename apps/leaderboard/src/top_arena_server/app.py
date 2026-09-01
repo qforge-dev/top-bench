@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,9 +14,9 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import defer, joinedload, selectinload
 
 from .config import Settings
 from .database import Database
@@ -146,7 +147,12 @@ def _audio_response(value: bytes, media_type: str, range_header: str | None) -> 
     )
 
 
-def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunResponse:
+def _run_response(
+    run: BenchmarkRun,
+    *,
+    include_cases: bool = True,
+    metrics: dict[str, Any] | None = None,
+) -> RunResponse:
     return RunResponse(
         id=run.id,
         name=run.name,
@@ -164,7 +170,7 @@ def _run_response(run: BenchmarkRun, *, include_cases: bool = True) -> RunRespon
         status=run.status,
         total_cases=run.total_cases,
         completed_cases=run.completed_cases,
-        metrics=run.metrics,
+        metrics=run.metrics if metrics is None else metrics,
         created_at=run.created_at,
         completed_at=run.completed_at,
         cases=[_case_response(run_case) for run_case in run.cases] if include_cases else [],
@@ -277,19 +283,38 @@ async def _load_case_locations(
 async def _leaderboard_runs(
     services: Services,
     *,
+    amp_scope: Literal["normal", "simple", "all"] = "all",
     amp_id: str | None = None,
     creator: str | None = None,
     sort_key: str = "esr",
     direction: str = "asc",
 ) -> list[RunResponse]:
-    statement = select(BenchmarkRun).join(BenchmarkRun.amp).options(joinedload(BenchmarkRun.amp))
+    statement = (
+        select(BenchmarkRun)
+        .join(BenchmarkRun.amp)
+        .options(
+            joinedload(BenchmarkRun.amp),
+            defer(BenchmarkRun.metrics, raiseload=True),
+        )
+    )
+    if amp_scope == "simple":
+        statement = statement.where(BenchmarkRun.amp_id.in_(SIMPLE_AMP_IDS))
+    elif amp_scope == "normal":
+        statement = statement.where(BenchmarkRun.amp_id.not_in(SIMPLE_AMP_IDS))
     if amp_id:
         statement = statement.where(BenchmarkRun.amp_id == amp_id)
     if creator:
         statement = statement.where(BenchmarkRun.creator == creator)
     async with services.database.session() as session:
         runs = (await session.scalars(statement)).unique().all()
-    responses = [_run_response(run, include_cases=False) for run in runs]
+    responses = [
+        _run_response(
+            run,
+            include_cases=False,
+            metrics=run.leaderboard_metrics,
+        )
+        for run in runs
+    ]
 
     def metric_value(run: RunResponse, metric: str, summary: str = "mean") -> float:
         value = run.metrics.get(metric, {}).get(summary)
@@ -361,14 +386,7 @@ async def _leaderboard_page(
     page: int = 1,
     page_size: int | None = LEADERBOARD_PAGE_SIZE,
 ) -> LeaderboardResponse:
-    all_runs = await _leaderboard_runs(services)
-    scope_runs = [
-        run
-        for run in all_runs
-        if amp_scope == "all"
-        or (amp_scope == "simple" and run.amp_id in SIMPLE_AMP_IDS)
-        or (amp_scope == "normal" and run.amp_id not in SIMPLE_AMP_IDS)
-    ]
+    scope_runs = await _leaderboard_runs(services, amp_scope=amp_scope)
     ranked = [run for run in scope_runs if _metric_mean(run, "esr") is not None]
     ranked.sort(key=lambda run: (_metric_mean(run, "esr"), run.name.casefold(), run.id))
     ranks = {run.id: index for index, run in enumerate(ranked, start=1)}
@@ -423,6 +441,30 @@ async def _leaderboard_amps(services: Services) -> list[AmpResponse]:
     async with services.database.session() as session:
         amps = (await session.scalars(select(Amp).order_by(Amp.name, Amp.id))).all()
     return [AmpResponse.model_validate(amp) for amp in amps]
+
+
+async def _leaderboard_etag(services: Services, query: str) -> str:
+    async with services.database.session() as session:
+        run_revision = (
+            await session.execute(
+                select(
+                    func.count(BenchmarkRun.id),
+                    func.max(BenchmarkRun.updated_at),
+                )
+            )
+        ).one()
+        amp_revision = (
+            await session.execute(
+                select(
+                    Amp.id,
+                    Amp.name,
+                    Amp.amp_type,
+                    Amp.control_names,
+                ).order_by(Amp.id)
+            )
+        ).all()
+    revision = repr((query, *run_revision, amp_revision)).encode()
+    return f'"{hashlib.sha256(revision).hexdigest()}"'
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -946,6 +988,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/v1/leaderboard", response_model=LeaderboardResponse, tags=["leaderboard"])
     async def leaderboard(  # noqa: PLR0917
+        request: Request,
+        response: Response,
         amp_id: str | None = None,
         creator: str | None = None,
         search: str | None = None,
@@ -954,7 +998,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         amp_scope: Literal["normal", "simple", "all"] = "all",
         page: Annotated[int, Query(ge=1)] = 1,
         page_size: Annotated[int | None, Query(ge=1, le=100)] = None,
-    ) -> LeaderboardResponse:
+    ) -> LeaderboardResponse | Response:
+        etag = await _leaderboard_etag(services, request.url.query)
+        cache_headers = {
+            "Cache-Control": "public, no-cache",
+            "ETag": etag,
+        }
+        if etag in {value.strip() for value in request.headers.get("if-none-match", "").split(",")}:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
+        for key, value in cache_headers.items():
+            response.headers[key] = value
         return await _leaderboard_page(
             services,
             amp_scope=amp_scope,

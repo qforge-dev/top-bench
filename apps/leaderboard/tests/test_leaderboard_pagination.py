@@ -28,6 +28,12 @@ def _run(index: int, *, amp_id: str, creator: str) -> BenchmarkRun:
             "human_weighted_esr": {"mean": 0.02 + index / 1_000},
             "mrstft": {"mean": 0.1 + index / 1_000},
             "realtime_x": {"mean": 10.0 + index},
+            "nam_a2_full": {
+                "esr": {"mean": 0.1},
+                "human_weighted_esr": {"mean": 0.2},
+                "mrstft": {"mean": 0.3},
+            },
+            "diagnostics": {"large_unused_value": "x" * 100_000},
         },
     )
 
@@ -77,7 +83,11 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
             assert unpaginated["chart_runs"] == []
 
             default_parameters = {"amp_scope": "normal", "page_size": 25}
-            first = (await client.get("/api/v1/leaderboard", params=default_parameters)).json()
+            first_response = await client.get(
+                "/api/v1/leaderboard",
+                params=default_parameters,
+            )
+            first = first_response.json()
             assert first["page"] == 1
             assert first["page_size"] == 25
             assert first["total_runs"] == 30
@@ -86,6 +96,23 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
             assert len(first["chart_runs"]) == 30
             assert first["runs"][0]["name"] == "model-00"
             assert first["run_ranks"][first["runs"][0]["id"]] == 1
+            assert set(first["runs"][0]["metrics"]) == {
+                "esr",
+                "human_weighted_esr",
+                "mrstft",
+                "nam_a2_full",
+                "realtime_x",
+            }
+            assert "diagnostics" not in first["runs"][0]["metrics"]
+            assert len(first_response.content) < 100_000
+            etag = first_response.headers["etag"]
+            unchanged = await client.get(
+                "/api/v1/leaderboard",
+                params=default_parameters,
+                headers={"If-None-Match": etag},
+            )
+            assert unchanged.status_code == 304
+            assert unchanged.content == b""
             assert set(first["chart_runs"][0]) == {
                 "id",
                 "name",

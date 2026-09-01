@@ -475,9 +475,10 @@
     state.requestInFlight = true;
     try {
       const response = await fetch(`/api/v1/leaderboard?amp_id=${encodeURIComponent(state.ampId)}`, {
-        cache: "no-store",
+        cache: "no-cache",
         headers: { Accept: "application/json" },
       });
+      if (response.status === 304) return;
       if (!response.ok) throw new Error(`Amp results request failed with ${response.status}`);
       const runs = parsePayload(await response.json());
       const signature = JSON.stringify(runs);

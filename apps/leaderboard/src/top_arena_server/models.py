@@ -17,7 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     select,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 from sqlalchemy.sql import Select
 
 
@@ -27,6 +27,28 @@ def new_id() -> str:
 
 def now_utc() -> datetime:
     return datetime.now(UTC)
+
+
+def leaderboard_metric_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Return only the aggregate values displayed by leaderboard and amp pages."""
+
+    def mean(metric_group: dict[str, Any], metric_name: str) -> dict[str, Any]:
+        value = metric_group.get(metric_name)
+        return {"mean": value.get("mean") if isinstance(value, dict) else None}
+
+    baseline = metrics.get("nam_a2_full")
+    baseline_metrics = baseline if isinstance(baseline, dict) else {}
+    return {
+        "esr": mean(metrics, "esr"),
+        "human_weighted_esr": mean(metrics, "human_weighted_esr"),
+        "mrstft": mean(metrics, "mrstft"),
+        "realtime_x": mean(metrics, "realtime_x"),
+        "nam_a2_full": {
+            "esr": mean(baseline_metrics, "esr"),
+            "human_weighted_esr": mean(baseline_metrics, "human_weighted_esr"),
+            "mrstft": mean(baseline_metrics, "mrstft"),
+        },
+    }
 
 
 class Base(DeclarativeBase):
@@ -91,6 +113,7 @@ class BenchmarkRun(Base):
     total_cases: Mapped[int] = mapped_column(Integer)
     completed_cases: Mapped[int] = mapped_column(Integer, default=0)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    leaderboard_metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
@@ -102,6 +125,15 @@ class BenchmarkRun(Base):
     events: Mapped[list[RunEvent]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
+
+    @validates("metrics")
+    def _update_leaderboard_metrics(
+        self,
+        _key: str,
+        value: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.leaderboard_metrics = leaderboard_metric_summary(value)
+        return value
 
 
 class RunCase(Base):

@@ -11,7 +11,7 @@ import soundfile as sf
 from sqlalchemy import select
 from top_arena_server.app import create_app
 from top_arena_server.config import Settings
-from top_arena_server.models import BenchmarkCase, RunCase
+from top_arena_server.models import BenchmarkCase, RunCase, leaderboard_metric_summary
 from top_arena_server.seed import seed_sample_dataset
 
 
@@ -182,7 +182,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
             assert (
-                "/static/dashboard.js?v=20260901-paginated-leaderboard" in dashboard_response.text
+                "/static/dashboard.js?v=20260901-efficient-leaderboard" in dashboard_response.text
             )
             assert 'id="leaderboard-pagination"' in dashboard_response.text
             assert 'id="page-previous"' in dashboard_response.text
@@ -208,7 +208,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert "Demo Bias-X results · Top Arena" in amp_page_response.text
             assert "lifecycle-model" in amp_page_response.text
             assert 'data-amp-id="demo-bias-x"' in amp_page_response.text
-            assert "/static/amp_detail.js?v=20260831-utc-dates" in amp_page_response.text
+            assert (
+                "/static/amp_detail.js?v=20260901-efficient-leaderboard" in amp_page_response.text
+            )
             assert ">Amp params<" in amp_page_response.text
             assert ">Pos / param<" in amp_page_response.text
             assert ">Started (UTC)<" in amp_page_response.text
@@ -229,7 +231,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert leaderboard["runs"][0]["cases"] == []
             assert leaderboard["runs"][0]["amp_control_count"] == 5
             assert leaderboard["runs"][0]["unique_positions_used"] == 50
-            assert leaderboard["runs"][0]["metrics"] == original_metrics
+            assert leaderboard["runs"][0]["metrics"] == leaderboard_metric_summary(
+                original_metrics  # type: ignore[arg-type]
+            )
             assert [(amp["id"], amp["name"]) for amp in leaderboard["amps"]] == [
                 ("demo-bias-x", "Demo Bias-X"),
                 ("pg-clean", "PG Clean"),
