@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
@@ -27,6 +28,7 @@ from .schemas import (
     EventRequest,
     EventResponse,
     EventsResponse,
+    LeaderboardChartRunResponse,
     LeaderboardResponse,
     ManifestCase,
     ManifestResponse,
@@ -46,6 +48,8 @@ from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
 
 LOGGER = logging.getLogger(__name__)
+SIMPLE_AMP_IDS = frozenset({"blackface63-simple"})
+LEADERBOARD_PAGE_SIZE = 25
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +307,116 @@ async def _leaderboard_runs(
     key = keys.get(sort_key, keys["esr"])
     responses.sort(key=key, reverse=direction == "desc")
     return responses
+
+
+def _metric_mean(run: RunResponse, metric: str) -> float | None:
+    value = run.metrics.get(metric, {}).get("mean")
+    return float(value) if value is not None else None
+
+
+def _sort_leaderboard_runs(
+    runs: list[RunResponse],
+    *,
+    sort_key: str,
+    direction: str,
+) -> list[RunResponse]:
+    def status_progress(run: RunResponse) -> float:
+        return run.completed_cases / run.total_cases if run.total_cases else 0.0
+
+    keys: dict[str, Any] = {
+        "rank": lambda run: _metric_mean(run, "esr"),
+        "name": lambda run: run.name.casefold(),
+        "amp": lambda run: (run.amp_name.casefold(), run.amp_id.casefold()),
+        "status": status_progress,
+        "positions": lambda run: run.unique_positions_used,
+        "ampParameters": lambda run: run.amp_control_count,
+        "positionsPerControl": lambda run: (
+            run.unique_positions_used / run.amp_control_count if run.amp_control_count else None
+        ),
+        "started": lambda run: run.created_at,
+        "created": lambda run: run.created_at,
+        "realtime": lambda run: _metric_mean(run, "realtime_x"),
+        "speed": lambda run: _metric_mean(run, "realtime_x"),
+        "esr": lambda run: _metric_mean(run, "esr"),
+        "humanWeightedEsr": lambda run: _metric_mean(run, "human_weighted_esr"),
+        "mrstft": lambda run: _metric_mean(run, "mrstft"),
+    }
+    key = keys.get(sort_key, keys["esr"])
+    named = sorted(runs, key=lambda run: (run.name.casefold(), run.id))
+    available = [run for run in named if key(run) is not None]
+    missing = [run for run in named if key(run) is None]
+    available.sort(key=key, reverse=direction == "desc")
+    return [*available, *missing]
+
+
+async def _leaderboard_page(
+    services: Services,
+    *,
+    amp_scope: Literal["normal", "simple", "all"] = "normal",
+    amp_id: str | None = None,
+    creator: str | None = None,
+    search: str | None = None,
+    sort_key: str = "esr",
+    direction: str = "asc",
+    page: int = 1,
+    page_size: int | None = LEADERBOARD_PAGE_SIZE,
+) -> LeaderboardResponse:
+    all_runs = await _leaderboard_runs(services)
+    scope_runs = [
+        run
+        for run in all_runs
+        if amp_scope == "all"
+        or (amp_scope == "simple" and run.amp_id in SIMPLE_AMP_IDS)
+        or (amp_scope == "normal" and run.amp_id not in SIMPLE_AMP_IDS)
+    ]
+    ranked = [run for run in scope_runs if _metric_mean(run, "esr") is not None]
+    ranked.sort(key=lambda run: (_metric_mean(run, "esr"), run.name.casefold(), run.id))
+    ranks = {run.id: index for index, run in enumerate(ranked, start=1)}
+    query = (search or "").strip().casefold()
+    filtered = [
+        run
+        for run in scope_runs
+        if (not amp_id or run.amp_id == amp_id)
+        and (not creator or run.creator == creator)
+        and (not query or query in f"{run.name} {run.description} {run.creator}".casefold())
+    ]
+    filtered = _sort_leaderboard_runs(
+        filtered,
+        sort_key=sort_key,
+        direction=direction,
+    )
+    total_runs = len(filtered)
+    selected_page_size = page_size or max(1, total_runs)
+    total_pages = max(1, ceil(total_runs / selected_page_size))
+    selected_page = min(page, total_pages)
+    start = (selected_page - 1) * selected_page_size
+    page_runs = filtered[start : start + selected_page_size]
+    return LeaderboardResponse(
+        runs=page_runs,
+        chart_runs=(
+            [
+                LeaderboardChartRunResponse(
+                    id=run.id,
+                    name=run.name,
+                    amp_id=run.amp_id,
+                    amp_name=run.amp_name,
+                    amp_control_count=run.amp_control_count,
+                    unique_positions_used=run.unique_positions_used,
+                    esr=_metric_mean(run, "esr"),
+                )
+                for run in filtered
+            ]
+            if page_size is not None
+            else []
+        ),
+        amps=await _leaderboard_amps(services),
+        creators=sorted({run.creator for run in scope_runs}),
+        run_ranks={run.id: ranks[run.id] for run in page_runs if run.id in ranks},
+        page=selected_page,
+        page_size=selected_page_size,
+        total_runs=total_runs,
+        total_pages=total_pages,
+    )
 
 
 async def _leaderboard_amps(services: Services) -> list[AmpResponse]:
@@ -831,23 +945,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/v1/leaderboard", response_model=LeaderboardResponse, tags=["leaderboard"])
-    async def leaderboard(
+    async def leaderboard(  # noqa: PLR0917
         amp_id: str | None = None,
         creator: str | None = None,
+        search: str | None = None,
         sort: str = "esr",
         direction: str = "asc",
+        amp_scope: Literal["normal", "simple", "all"] = "all",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int | None, Query(ge=1, le=100)] = None,
     ) -> LeaderboardResponse:
-        runs = await _leaderboard_runs(
+        return await _leaderboard_page(
             services,
+            amp_scope=amp_scope,
             amp_id=amp_id,
             creator=creator,
+            search=search,
             sort_key=sort,
             direction=direction,
-        )
-        return LeaderboardResponse(
-            runs=runs,
-            amps=await _leaderboard_amps(services),
-            creators=sorted({run.creator for run in runs}),
+            page=page,
+            page_size=page_size,
         )
 
     @app.get("/runs/{run_id}", include_in_schema=False)
@@ -931,18 +1048,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def dashboard(request: Request) -> Response:
-        runs = await _leaderboard_runs(services)
-        amps = await _leaderboard_amps(services)
-        serialized_runs = [run.model_dump(mode="json") for run in runs]
-        serialized_amps = [amp.model_dump(mode="json") for amp in amps]
+        leaderboard_page = await _leaderboard_page(services)
+        serialized = leaderboard_page.model_dump(mode="json")
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
-                "runs": serialized_runs,
-                "amps": serialized_amps,
-                "leaderboard": {"runs": serialized_runs, "amps": serialized_amps},
-                "creators": sorted({run.creator for run in runs}),
+                "runs": serialized["runs"],
+                "amps": serialized["amps"],
+                "leaderboard": serialized,
+                "creators": serialized["creators"],
             },
         )
 

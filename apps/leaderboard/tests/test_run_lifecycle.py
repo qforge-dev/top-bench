@@ -181,7 +181,12 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-scope-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260831-amp-scope" in dashboard_response.text
+            assert (
+                "/static/dashboard.js?v=20260901-paginated-leaderboard" in dashboard_response.text
+            )
+            assert 'id="leaderboard-pagination"' in dashboard_response.text
+            assert 'id="page-previous"' in dashboard_response.text
+            assert 'id="page-next"' in dashboard_response.text
             assert ">Amp params <" in dashboard_response.text
             assert (
                 'data-label="Amp parameters" class="numeric-cell">5</td>' in dashboard_response.text

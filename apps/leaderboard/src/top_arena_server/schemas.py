@@ -137,10 +137,26 @@ class RunResponse(ApiModel):
     cases: list[CaseResultResponse] = Field(default_factory=list)
 
 
+class LeaderboardChartRunResponse(ApiModel):
+    id: str
+    name: str
+    amp_id: str
+    amp_name: str
+    amp_control_count: int
+    unique_positions_used: int
+    esr: float | None
+
+
 class LeaderboardResponse(ApiModel):
     runs: list[RunResponse]
+    chart_runs: list[LeaderboardChartRunResponse] = Field(default_factory=list)
     amps: list[AmpResponse]
     creators: list[str]
+    run_ranks: dict[str, int] = Field(default_factory=dict)
+    page: int = 1
+    page_size: int = 25
+    total_runs: int = 0
+    total_pages: int = 1
 
 
 class RunCaseIndexItem(ApiModel):

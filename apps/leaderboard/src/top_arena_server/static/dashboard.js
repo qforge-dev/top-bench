@@ -3,6 +3,8 @@
 
   const SVG_NS = "http://www.w3.org/2000/svg";
   const POLL_INTERVAL_MS = 2_000;
+  const SEARCH_DEBOUNCE_MS = 250;
+  const PAGE_SIZE = 25;
   const DEFAULT_AMP_SCOPE = "normal";
   const SIMPLE_AMP_IDS = new Set(["blackface63-simple"]);
 
@@ -17,6 +19,10 @@
     creatorFilter: document.querySelector("#creator-filter"),
     initialData: document.querySelector("#leaderboard-initial-data"),
     modelFilter: document.querySelector("#model-filter"),
+    pageCurrent: document.querySelector("#current-page"),
+    pageNext: document.querySelector("#page-next"),
+    pagePrevious: document.querySelector("#page-previous"),
+    pageTotal: document.querySelector("#total-pages"),
     refreshStatus: document.querySelector("#refresh-status"),
     resultCount: document.querySelector("#result-count"),
     summaryCompleted: document.querySelector("#summary-completed-count"),
@@ -30,13 +36,23 @@
 
   const state = {
     amps: [],
+    chartRuns: [],
+    creators: [],
     runs: [],
+    runRanks: new Map(),
     sortKey: "esr",
     sortDirection: "ascending",
+    page: 1,
+    pageSize: PAGE_SIZE,
+    totalRuns: 0,
+    totalPages: 1,
+    serverPaginated: false,
     requestInFlight: false,
+    reloadPending: false,
     dataSignature: null,
     chartSignature: null,
   };
+  let searchTimer = null;
 
   function firstValue(...values) {
     return values.find((value) => value !== undefined && value !== null && value !== "");
@@ -118,6 +134,14 @@
     return Array.isArray(values) ? values.map(normalizeRun) : [];
   }
 
+  function chartRunsFromPayload(payload, fallbackRuns) {
+    if (!Array.isArray(payload?.chart_runs)) return fallbackRuns;
+    return payload.chart_runs.map((run, index) => normalizeRun({
+      ...run,
+      metrics: { esr: { mean: run?.esr } },
+    }, index));
+  }
+
   function ampsFromPayload(payload, runs) {
     const supplied = Array.isArray(payload?.amps) ? payload.amps : [];
     const values = supplied.length
@@ -138,15 +162,27 @@
 
   function parseInitialData() {
     if (!elements.initialData) {
-      return { amps: [], runs: [] };
+      return { amps: [], chartRuns: [], creators: [], runs: [] };
     }
     try {
       const payload = JSON.parse(elements.initialData.textContent || "{}");
       const runs = runsFromPayload(payload);
-      return { amps: ampsFromPayload(payload, runs), runs };
+      const totalRuns = finite(payload?.total_runs);
+      return {
+        amps: ampsFromPayload(payload, runs),
+        chartRuns: chartRunsFromPayload(payload, runs),
+        creators: Array.isArray(payload?.creators) ? payload.creators.map(String) : [],
+        runs,
+        runRanks: new Map(Object.entries(payload?.run_ranks || {})),
+        page: finite(payload?.page) ?? 1,
+        pageSize: finite(payload?.page_size) ?? PAGE_SIZE,
+        totalRuns: totalRuns ?? runs.length,
+        totalPages: finite(payload?.total_pages) ?? 1,
+        serverPaginated: totalRuns !== null,
+      };
     } catch (error) {
       console.warn("Could not read the server-rendered leaderboard snapshot.", error);
-      return { amps: [], runs: [] };
+      return { amps: [], chartRuns: [], creators: [], runs: [] };
     }
   }
 
@@ -361,12 +397,16 @@
   function renderTable(runs) {
     elements.body.replaceChildren();
     if (runs.length === 0) {
+      const filtered = ampScope() !== DEFAULT_AMP_SCOPE
+        || Boolean(elements.ampFilter?.value)
+        || Boolean(elements.creatorFilter?.value)
+        || Boolean(elements.modelFilter?.value);
       const row = createElement("tr", "empty-row");
       const cell = createElement("td");
       cell.colSpan = 12;
       cell.append(
-        createElement("strong", "", state.runs.length ? "No runs match these filters" : "No benchmark runs yet"),
-        createElement("span", "", state.runs.length
+        createElement("strong", "", filtered || state.runs.length ? "No runs match these filters" : "No benchmark runs yet"),
+        createElement("span", "", filtered || state.runs.length
           ? "Try a different amp, creator, or model name."
           : "Start a local benchmark and its progress will appear here."),
       );
@@ -375,8 +415,9 @@
       return;
     }
 
-    const ranks = rankMap(runsInScope());
-    for (const run of sortedRuns(runs, ranks)) {
+    const ranks = state.serverPaginated ? state.runRanks : rankMap(runsInScope());
+    const displayedRuns = state.serverPaginated ? runs : sortedRuns(runs, ranks);
+    for (const run of displayedRuns) {
       const row = createElement("tr");
       row.dataset.runId = run.id;
       row.append(
@@ -449,7 +490,10 @@
 
   function updateFilterOptions() {
     updateAmpSelect();
-    updateSelect(elements.creatorFilter, uniqueSorted(state.runs.map((run) => run.creator)), "All creators");
+    const creators = state.creators.length
+      ? state.creators
+      : state.runs.map((run) => run.creator);
+    updateSelect(elements.creatorFilter, uniqueSorted(creators), "All creators");
   }
 
   function paretoFrontier(points) {
@@ -466,6 +510,43 @@
       }
     }
     return frontier;
+  }
+
+  function keyResults(frontier, maximum = 8) {
+    if (frontier.length <= maximum) return frontier;
+    const indices = new Set();
+    for (let index = 0; index < maximum; index += 1) {
+      indices.add(Math.round((index * (frontier.length - 1)) / (maximum - 1)));
+    }
+    return [...indices].map((index) => frontier[index]);
+  }
+
+  function keyLabelPositions(runs, xScale, yScale, bounds) {
+    const labels = runs.map((run) => ({
+      id: run.id,
+      pointX: xScale(run.positionsPerControl),
+      pointY: yScale(run.esr.mean),
+    })).sort((left, right) => left.pointY - right.pointY);
+    const gap = 16;
+    for (const [index, label] of labels.entries()) {
+      label.labelY = Math.max(label.pointY, index ? labels[index - 1].labelY + gap : bounds.top);
+    }
+    if (labels.at(-1)?.labelY > bounds.bottom) {
+      labels.at(-1).labelY = bounds.bottom;
+      for (let index = labels.length - 2; index >= 0; index -= 1) {
+        labels[index].labelY = Math.min(labels[index].labelY, labels[index + 1].labelY - gap);
+      }
+    }
+    return new Map(labels.map((label) => {
+      const placeLeft = label.pointX > bounds.left + (bounds.right - bounds.left) * 0.72;
+      return [label.id, {
+        anchor: placeLeft ? "end" : "start",
+        labelX: label.pointX + (placeLeft ? -11 : 11),
+        labelY: label.labelY,
+        pointX: label.pointX,
+        pointY: label.pointY,
+      }];
+    }));
   }
 
   function shorten(value, length = 19) {
@@ -607,11 +688,22 @@
       createSvg("path", { class: "frontier-line", d: frontierPath, "aria-hidden": "true" }),
     );
 
-    const frontierValues = new Set(frontier.map((run) => `${run.positionsPerControl}:${run.esr.mean}`));
+    const frontierIds = new Set(frontier.map((run) => run.id));
+    const labelsByRun = keyLabelPositions(
+      keyResults(frontier),
+      xScale,
+      yScale,
+      {
+        top: margin.top + 8,
+        right: margin.left + innerWidth,
+        bottom: margin.top + innerHeight - 8,
+        left: margin.left,
+      },
+    );
     const pointLayer = createSvg("g");
     for (const run of points) {
       const position = { x: xScale(run.positionsPerControl), y: yScale(run.esr.mean) };
-      const onFrontier = frontierValues.has(`${run.positionsPerControl}:${run.esr.mean}`);
+      const onFrontier = frontierIds.has(run.id);
       const marker = createSvg("g", { class: "run-marker" });
       const circle = createSvg("circle", {
         class: `run-point${onFrontier ? " on-frontier" : ""}`,
@@ -635,15 +727,28 @@
       circle.addEventListener("focus", () => showTooltip(run, position));
       circle.addEventListener("mouseleave", hideTooltip);
       circle.addEventListener("blur", hideTooltip);
-      const label = createSvg("text", {
-        class: "point-label",
-        x: position.x + 10,
-        y: position.y,
-        "dominant-baseline": "middle",
-        "aria-hidden": "true",
-      });
-      label.textContent = shorten(run.name);
-      marker.append(circle, label);
+      marker.append(circle);
+      const labelPosition = labelsByRun.get(run.id);
+      if (labelPosition) {
+        const connector = createSvg("line", {
+          class: "key-label-line",
+          x1: labelPosition.pointX,
+          x2: labelPosition.labelX,
+          y1: labelPosition.pointY,
+          y2: labelPosition.labelY,
+          "aria-hidden": "true",
+        });
+        const label = createSvg("text", {
+          class: "point-label",
+          x: labelPosition.labelX,
+          y: labelPosition.labelY,
+          "dominant-baseline": "middle",
+          "text-anchor": labelPosition.anchor,
+          "aria-hidden": "true",
+        });
+        label.textContent = shorten(run.name);
+        marker.append(connector, label);
+      }
       pointLayer.append(marker);
     }
     chart.append(pointLayer);
@@ -660,17 +765,32 @@
   }
 
   function render() {
-    const filtered = selectedRuns();
+    const filtered = state.serverPaginated ? state.runs : selectedRuns();
+    const chartRuns = state.serverPaginated ? state.chartRuns : filtered;
     renderTable(filtered);
-    renderChart(filtered);
+    renderChart(chartRuns);
     updateSortHeaders();
     if (elements.resultCount) {
-      elements.resultCount.textContent = `${filtered.length} ${filtered.length === 1 ? "run" : "runs"}${filtered.length !== state.runs.length ? ` of ${state.runs.length}` : ""}`;
+      if (state.serverPaginated) {
+        const first = state.totalRuns ? (state.page - 1) * state.pageSize + 1 : 0;
+        const last = state.totalRuns ? first + filtered.length - 1 : 0;
+        elements.resultCount.textContent = state.totalRuns
+          ? `${first}–${last} of ${state.totalRuns} runs`
+          : "0 runs";
+      } else {
+        elements.resultCount.textContent = `${filtered.length} ${filtered.length === 1 ? "run" : "runs"}${filtered.length !== state.runs.length ? ` of ${state.runs.length}` : ""}`;
+      }
     }
-    if (elements.summaryRuns) elements.summaryRuns.textContent = String(state.runs.length);
+    if (elements.summaryRuns) {
+      elements.summaryRuns.textContent = String(state.serverPaginated ? state.totalRuns : state.runs.length);
+    }
     if (elements.summaryCompleted) {
       elements.summaryCompleted.textContent = String(state.runs.filter((run) => ["completed", "finished"].includes(run.status)).length);
     }
+    if (elements.pageCurrent) elements.pageCurrent.textContent = String(state.page);
+    if (elements.pageTotal) elements.pageTotal.textContent = String(state.totalPages);
+    if (elements.pagePrevious) elements.pagePrevious.disabled = state.page <= 1;
+    if (elements.pageNext) elements.pageNext.disabled = state.page >= state.totalPages;
     if (elements.clearFilters) {
       elements.clearFilters.disabled = ampScope() === DEFAULT_AMP_SCOPE
         && !elements.ampFilter?.value
@@ -684,13 +804,67 @@
     if (elements.connectionLabel) elements.connectionLabel.textContent = online ? "Live" : "Reconnecting";
   }
 
-  async function pollLeaderboard() {
+  function leaderboardUrl() {
+    const parameters = new URLSearchParams({
+      amp_scope: ampScope(),
+      direction: state.sortDirection === "ascending" ? "asc" : "desc",
+      page: String(state.page),
+      page_size: String(state.pageSize),
+      sort: state.sortKey,
+    });
+    const ampId = elements.ampFilter?.value || "";
+    const creator = elements.creatorFilter?.value || "";
+    const search = (elements.modelFilter?.value || "").trim();
+    if (ampId) parameters.set("amp_id", ampId);
+    if (creator) parameters.set("creator", creator);
+    if (search) parameters.set("search", search);
+    return `/api/v1/leaderboard?${parameters}`;
+  }
+
+  function applyPayload(payload) {
+    const runs = runsFromPayload(payload);
+    const amps = ampsFromPayload(payload, runs);
+    const chartRuns = chartRunsFromPayload(payload, runs);
+    const totalRuns = finite(payload?.total_runs);
+    const signature = JSON.stringify({
+      amps,
+      chartRuns,
+      creators: payload?.creators,
+      runs,
+      ranks: payload?.run_ranks,
+      page: payload?.page,
+      pageSize: payload?.page_size,
+      totalRuns,
+      totalPages: payload?.total_pages,
+    });
+    if (signature === state.dataSignature) return;
+    state.runs = runs;
+    state.chartRuns = chartRuns;
+    state.amps = amps;
+    state.creators = Array.isArray(payload?.creators) ? payload.creators.map(String) : [];
+    state.runRanks = new Map(
+      Object.entries(payload?.run_ranks || {}).map(([id, rank]) => [id, Number(rank)]),
+    );
+    state.serverPaginated = totalRuns !== null;
+    state.page = finite(payload?.page) ?? state.page;
+    state.pageSize = finite(payload?.page_size) ?? state.pageSize;
+    state.totalRuns = totalRuns ?? runs.length;
+    state.totalPages = finite(payload?.total_pages) ?? 1;
+    state.dataSignature = signature;
+    updateFilterOptions();
+    render();
+  }
+
+  async function pollLeaderboard({ loading = false } = {}) {
     if (state.requestInFlight || document.hidden) {
+      state.reloadPending = true;
       return;
     }
     state.requestInFlight = true;
+    if (loading && elements.refreshStatus) elements.refreshStatus.textContent = "Loading results…";
     try {
-      const response = await fetch("/api/v1/leaderboard", {
+      const requestedUrl = leaderboardUrl();
+      const response = await fetch(requestedUrl, {
         cache: "no-store",
         headers: { Accept: "application/json" },
       });
@@ -698,15 +872,10 @@
         throw new Error(`Leaderboard request failed with ${response.status}`);
       }
       const payload = await response.json();
-      const runs = runsFromPayload(payload);
-      const amps = ampsFromPayload(payload, runs);
-      const signature = JSON.stringify({ amps, runs });
-      if (signature !== state.dataSignature) {
-        state.runs = runs;
-        state.amps = amps;
-        state.dataSignature = signature;
-        updateFilterOptions();
-        render();
+      if (requestedUrl === leaderboardUrl()) {
+        applyPayload(payload);
+      } else {
+        state.reloadPending = true;
       }
       setConnection(true);
       if (elements.refreshStatus) {
@@ -718,6 +887,19 @@
       console.warn("Leaderboard refresh failed.", error);
     } finally {
       state.requestInFlight = false;
+      if (state.reloadPending) {
+        state.reloadPending = false;
+        void pollLeaderboard({ loading: true });
+      }
+    }
+  }
+
+  function refreshFromFirstPage() {
+    state.page = 1;
+    if (state.serverPaginated) {
+      void pollLeaderboard({ loading: true });
+    } else {
+      render();
     }
   }
 
@@ -731,28 +913,55 @@
         state.sortKey = key;
         state.sortDirection = ["realtime", "started"].includes(key) ? "descending" : "ascending";
       }
-      render();
+      refreshFromFirstPage();
     });
   }
 
-  for (const input of [elements.ampFilter, elements.creatorFilter, elements.modelFilter]) {
-    input?.addEventListener("input", render);
-    input?.addEventListener("change", render);
+  for (const input of [elements.ampFilter, elements.creatorFilter]) {
+    input?.addEventListener("change", refreshFromFirstPage);
   }
+
+  elements.modelFilter?.addEventListener("input", () => {
+    if (!state.serverPaginated) {
+      render();
+      return;
+    }
+    if (searchTimer !== null) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      searchTimer = null;
+      refreshFromFirstPage();
+    }, SEARCH_DEBOUNCE_MS);
+  });
 
   elements.ampScopeFilter?.addEventListener("change", () => {
     updateAmpSelect();
-    render();
+    refreshFromFirstPage();
   });
 
   elements.clearFilters?.addEventListener("click", () => {
+    if (searchTimer !== null) {
+      window.clearTimeout(searchTimer);
+      searchTimer = null;
+    }
     if (elements.ampScopeFilter) elements.ampScopeFilter.value = DEFAULT_AMP_SCOPE;
     if (elements.ampFilter) elements.ampFilter.value = "";
     if (elements.creatorFilter) elements.creatorFilter.value = "";
     if (elements.modelFilter) elements.modelFilter.value = "";
     updateAmpSelect();
     elements.modelFilter?.focus();
-    render();
+    refreshFromFirstPage();
+  });
+
+  elements.pagePrevious?.addEventListener("click", () => {
+    if (state.page <= 1) return;
+    state.page -= 1;
+    void pollLeaderboard({ loading: true });
+  });
+
+  elements.pageNext?.addEventListener("click", () => {
+    if (state.page >= state.totalPages) return;
+    state.page += 1;
+    void pollLeaderboard({ loading: true });
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -761,8 +970,26 @@
 
   const initial = parseInitialData();
   state.runs = initial.runs;
+  state.chartRuns = initial.chartRuns;
   state.amps = initial.amps;
-  state.dataSignature = JSON.stringify({ amps: state.amps, runs: state.runs });
+  state.creators = initial.creators;
+  state.runRanks = initial.runRanks || new Map();
+  state.page = initial.page || 1;
+  state.pageSize = initial.pageSize || PAGE_SIZE;
+  state.totalRuns = initial.totalRuns ?? state.runs.length;
+  state.totalPages = initial.totalPages || 1;
+  state.serverPaginated = initial.serverPaginated || false;
+  state.dataSignature = JSON.stringify({
+    amps: state.amps,
+    chartRuns: state.chartRuns,
+    creators: state.creators,
+    runs: state.runs,
+    ranks: Object.fromEntries(state.runRanks),
+    page: state.page,
+    pageSize: state.pageSize,
+    totalRuns: state.totalRuns,
+    totalPages: state.totalPages,
+  });
   updateFilterOptions();
   render();
   window.setInterval(() => void pollLeaderboard(), POLL_INTERVAL_MS);

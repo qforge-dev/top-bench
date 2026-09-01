@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Limited chart labels to key Pareto results and added server-backed leaderboard
+  pagination so filtering and sorting remain global while each page loads only 25 full runs.
 - Added ordered amp parameter names and every stored benchmark-position value to amp
   detail pages.
 - Restored sortable mobile tables inside vertically and horizontally scrollable regions

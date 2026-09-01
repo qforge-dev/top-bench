@@ -50,6 +50,7 @@
 
 {% set initial_runs = runs|default([], true) %}
 {% set normal_runs = initial_runs|rejectattr("amp_id", "equalto", "blackface63-simple")|list %}
+{% set initial_total = leaderboard.total_runs|default(normal_runs|length, true) %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -62,8 +63,8 @@
       name="description"
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
-    <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
-    <script defer src="/static/dashboard.js?v=20260831-amp-scope"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260901-paginated-leaderboard">
+    <script defer src="/static/dashboard.js?v=20260901-paginated-leaderboard"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -86,8 +87,8 @@
         <div class="section-heading">
           <h1 id="pareto-title">ESR vs. positions per control</h1>
           <div class="chart-legend" aria-label="Chart legend">
-            <span><i class="legend-dot" aria-hidden="true"></i> Run</span>
-            <span><i class="legend-line" aria-hidden="true"></i> Pareto</span>
+            <span><i class="legend-dot" aria-hidden="true"></i> Run · hover for details</span>
+            <span><i class="legend-line" aria-hidden="true"></i> Key Pareto result</span>
           </div>
         </div>
         <p id="pareto-description" class="sr-only">
@@ -156,7 +157,9 @@
         </div>
 
         <div class="table-meta">
-          <p id="result-count" aria-live="polite">{{ normal_runs|length }} runs{% if normal_runs|length != initial_runs|length %} of {{ initial_runs|length }}{% endif %}</p>
+          <p id="result-count" aria-live="polite">
+            {% if normal_runs %}1–{{ normal_runs|length }} of {{ initial_total }} runs{% else %}0 runs{% endif %}
+          </p>
           <p><span class="lower-is-better" aria-hidden="true">↓</span> Lower error is better</p>
         </div>
 
@@ -248,6 +251,19 @@
             </tbody>
           </table>
         </div>
+        <nav id="leaderboard-pagination" class="pagination" aria-label="Leaderboard pages">
+          <button id="page-previous" type="button" {% if leaderboard.page|default(1) <= 1 %}disabled{% endif %}>
+            <span aria-hidden="true">←</span> Previous
+          </button>
+          <p>
+            Page <strong id="current-page">{{ leaderboard.page|default(1) }}</strong>
+            of <span id="total-pages">{{ leaderboard.total_pages|default(1) }}</span>
+            <small>· {{ leaderboard.page_size|default(25) }} per page</small>
+          </p>
+          <button id="page-next" type="button" {% if leaderboard.page|default(1) >= leaderboard.total_pages|default(1) %}disabled{% endif %}>
+            Next <span aria-hidden="true">→</span>
+          </button>
+        </nav>
       </section>
     </main>
 

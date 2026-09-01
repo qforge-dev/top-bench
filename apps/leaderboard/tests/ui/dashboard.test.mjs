@@ -66,7 +66,18 @@ function markup(payload) {
     <select id="amp-filter"><option value="">All amps</option></select>
     <select id="creator-filter"><option value="">All creators</option></select>
     <input id="model-filter"><button id="clear-filters" type="button"></button>
-    <table><tbody id="leaderboard-body"></tbody></table>
+    <table>
+      <thead><tr>
+        <th aria-sort="none"><button class="sort-button" data-sort="name"><span>↕</span></button></th>
+        <th aria-sort="none"><button class="sort-button" data-sort="esr"><span>↕</span></button></th>
+      </tr></thead>
+      <tbody id="leaderboard-body"></tbody>
+    </table>
+    <nav id="leaderboard-pagination">
+      <button id="page-previous" type="button"></button>
+      <span id="current-page"></span><span id="total-pages"></span>
+      <button id="page-next" type="button"></button>
+    </nav>
     <svg id="pareto-chart" viewBox="0 0 960 430"></svg>
     <div id="chart-tooltip" hidden></div>
     <script id="leaderboard-initial-data" type="application/json">${JSON.stringify(payload)}</script>
@@ -198,6 +209,98 @@ test("amp set defaults to normal and switches graph, list, and amp picker togeth
   );
 });
 
+test("server pagination keeps filtering and sorting global", async () => {
+  const allRuns = [
+    run("delta", "Delta", "blackface-63", "Blackface 63"),
+    run("alpha", "Alpha", "pg-clean", "PG Clean"),
+    run("charlie", "Charlie", "blackface-63", "Blackface 63"),
+    run("bravo", "Bravo", "pg-clean", "PG Clean"),
+  ];
+  const amps = [
+    { id: "blackface-63", name: "Blackface 63", amp_type: "guitar", control_names: [] },
+    { id: "pg-clean", name: "PG Clean", amp_type: "guitar", control_names: [] },
+  ];
+  const responseFor = (url) => {
+    const parameters = new URL(url, "https://arena.test").searchParams;
+    let selected = [...allRuns];
+    if (parameters.get("amp_id")) {
+      selected = selected.filter((value) => value.amp_id === parameters.get("amp_id"));
+    }
+    if (parameters.get("sort") === "name") {
+      selected.sort((left, right) => left.name.localeCompare(right.name));
+    }
+    if (parameters.get("direction") === "desc") selected.reverse();
+    const pageSize = 2;
+    const totalPages = Math.max(1, Math.ceil(selected.length / pageSize));
+    const page = Math.min(Number(parameters.get("page") || 1), totalPages);
+    return {
+      amps,
+      creators: ["Test Lab"],
+      runs: selected.slice((page - 1) * pageSize, page * pageSize),
+      chart_runs: selected.map((value) => ({
+        id: value.id,
+        name: value.name,
+        amp_id: value.amp_id,
+        amp_name: value.amp_name,
+        amp_control_count: value.amp_control_count,
+        unique_positions_used: value.unique_positions_used,
+        esr: value.metrics.esr.mean,
+      })),
+      run_ranks: Object.fromEntries(selected.map((value, index) => [value.id, index + 1])),
+      page,
+      page_size: pageSize,
+      total_runs: selected.length,
+      total_pages: totalPages,
+    };
+  };
+  const initial = responseFor("/?page=1");
+  const requests = [];
+  const dom = new JSDOM(markup(initial), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  Object.defineProperty(dom.window.document, "hidden", { configurable: true, value: false });
+  dom.window.setInterval = () => 1;
+  dom.window.fetch = async (url) => {
+    requests.push(String(url));
+    return { ok: true, json: async () => responseFor(url) };
+  };
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  document.querySelector("#page-next").click();
+  await waitFor(() => assert.equal(document.querySelector("#current-page").textContent, "2"));
+  assert.deepEqual(
+    [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
+    ["charlie", "bravo"],
+  );
+  assert.match(document.querySelector("#result-count").textContent, /3–4 of 4 runs/);
+  assert.equal(new URL(requests.at(-1), "https://arena.test").searchParams.get("page"), "2");
+
+  document.querySelector('[data-sort="name"]').click();
+  await waitFor(() => assert.deepEqual(
+    [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
+    ["alpha", "bravo"],
+  ));
+  const sortedRequest = new URL(requests.at(-1), "https://arena.test").searchParams;
+  assert.equal(sortedRequest.get("sort"), "name");
+  assert.equal(sortedRequest.get("page"), "1");
+
+  const ampFilter = document.querySelector("#amp-filter");
+  ampFilter.value = "pg-clean";
+  ampFilter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await waitFor(() => assert.equal(document.querySelector("#result-count").textContent, "1–2 of 2 runs"));
+  assert.ok(
+    [...document.querySelectorAll("#leaderboard-body tr")]
+      .every((row) => ["alpha", "bravo"].includes(row.dataset.runId)),
+  );
+  assert.equal(
+    new URL(requests.at(-1), "https://arena.test").searchParams.get("amp_id"),
+    "pg-clean",
+  );
+});
+
 test("live progress refreshes do not replace the Pareto graph", async () => {
   const initialRun = run("run-live", "Live model", "pg-clean", "PG Clean");
   initialRun.status = "running";
@@ -257,11 +360,12 @@ test("Pareto chart plots positions per control against ESR on a logarithmic scal
   assert.equal(points.length, 3);
   const markers = [...document.querySelectorAll("#pareto-chart .run-marker")];
   assert.equal(markers.length, points.length);
-  assert.ok(markers.every((marker) => marker.querySelector(".point-label")));
-  assert.ok(markers.every((marker) => {
-    const point = marker.querySelector(".run-point");
+  const labelledMarkers = markers.filter((marker) => marker.querySelector(".point-label"));
+  assert.equal(labelledMarkers.length, 1);
+  assert.equal(labelledMarkers[0].querySelector(".point-label").textContent, "run-low");
+  assert.ok(labelledMarkers.every((marker) => {
     const label = marker.querySelector(".point-label");
-    return label.getAttribute("y") === point.getAttribute("cy")
+    return marker.querySelector(".key-label-line")
       && label.getAttribute("dominant-baseline") === "middle";
   }));
   const yByRun = new Map(points.map((point) => [
@@ -278,6 +382,27 @@ test("Pareto chart plots positions per control against ESR on a logarithmic scal
       .filter((label) => label.includes("e-") || label.startsWith("0.")),
     ["0.001", "0.01", "0.1"],
   );
+});
+
+test("Pareto chart caps labels while leaving every run available as a point", async () => {
+  const runs = Array.from({ length: 20 }, (_, index) => {
+    const value = run(`frontier-${index + 1}`, `Frontier ${index + 1}`, "blackface-63", "Blackface 63");
+    value.unique_positions_used = (index + 1) * 7;
+    value.metrics.esr.mean = 0.2 / (index + 1);
+    return value;
+  });
+  const dom = new JSDOM(markup({ runs }), {
+    runScripts: "outside-only",
+    url: "https://arena.test/",
+  });
+  dom.window.setInterval = () => 1;
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 20);
+  assert.equal(document.querySelectorAll("#pareto-chart .point-label").length, 8);
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point.on-frontier").length, 20);
 });
 
 test("Pareto chart favors fewer training positions per knob and switch", async () => {

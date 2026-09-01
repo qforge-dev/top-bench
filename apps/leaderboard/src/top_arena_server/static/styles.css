@@ -373,13 +373,19 @@ h2 {
 .pareto-chart .point-label {
   fill: #d7dde1;
   font-size: 11px;
-  opacity: 0.16;
+  font-weight: 700;
+  opacity: 1;
   paint-order: stroke;
   pointer-events: none;
   stroke: var(--panel);
   stroke-width: 4px;
   stroke-linejoin: round;
   transition: fill 130ms ease, opacity 130ms ease;
+}
+
+.pareto-chart .key-label-line {
+  stroke: #77838d;
+  stroke-width: 1;
 }
 
 .pareto-chart .run-marker:is(:hover, :focus-within) .point-label {
@@ -402,18 +408,21 @@ h2 {
 .pareto-chart .run-point {
   cursor: help;
   fill: var(--blue);
+  opacity: 0.48;
   stroke: #0a0d11;
   stroke-width: 3;
-  transition: r 120ms ease, fill 120ms ease;
+  transition: r 120ms ease, fill 120ms ease, opacity 120ms ease;
 }
 
 .pareto-chart .run-point.on-frontier {
   fill: var(--accent);
+  opacity: 1;
 }
 
 .pareto-chart .run-point:is(:hover, :focus) {
   r: 8;
   fill: #fff;
+  opacity: 1;
   outline: none;
 }
 
@@ -584,6 +593,47 @@ h2 {
   box-shadow: 0 20px 60px rgb(0 0 0 / 18%);
   scrollbar-color: #38434e var(--panel);
 }
+
+.pagination {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+
+.pagination button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.67rem;
+  text-transform: uppercase;
+}
+
+.pagination button:hover:not(:disabled) {
+  border-color: #4a5662;
+  color: var(--accent);
+}
+
+.pagination button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.pagination p {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.pagination strong { color: var(--text); }
+.pagination small { color: #69747e; }
 
 table {
   width: 100%;
@@ -1051,6 +1101,14 @@ footer {
     touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
   }
+
+  .pagination {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .pagination button { padding-inline: 10px; }
+  .pagination small { display: none; }
 
   footer {
     gap: 8px;
