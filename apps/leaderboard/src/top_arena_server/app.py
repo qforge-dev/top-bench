@@ -1266,8 +1266,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    async def dashboard(request: Request) -> Response:
-        leaderboard_page = await _leaderboard_page(services)
+    async def dashboard(  # noqa: PLR0917
+        request: Request,
+        amp_id: str | None = None,
+        creator: str | None = None,
+        search: str | None = None,
+        sort: str = "esr",
+        direction: str = "asc",
+        amp_scope: Literal["normal", "simple", "all"] = "normal",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(ge=1, le=100)] = LEADERBOARD_PAGE_SIZE,
+    ) -> Response:
+        leaderboard_page = await _leaderboard_page(
+            services,
+            amp_scope=amp_scope,
+            amp_id=amp_id,
+            creator=creator,
+            search=search,
+            sort_key=sort,
+            direction=direction,
+            page=page,
+            page_size=page_size,
+        )
         serialized = leaderboard_page.model_dump(mode="json")
         return templates.TemplateResponse(
             request=request,
@@ -1277,6 +1297,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "amps": serialized["amps"],
                 "leaderboard": serialized,
                 "creators": serialized["creators"],
+                "table_state": {
+                    "amp_scope": amp_scope,
+                    "amp_id": amp_id or "",
+                    "creator": creator or "",
+                    "search": search or "",
+                },
             },
         )
 

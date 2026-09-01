@@ -49,8 +49,13 @@
 {%- endmacro %}
 
 {% set initial_runs = runs|default([], true) %}
-{% set normal_runs = initial_runs|rejectattr("amp_id", "equalto", "blackface63-simple")|list %}
-{% set initial_total = leaderboard.total_runs|default(normal_runs|length, true) %}
+{% set page_runs = initial_runs %}
+{% set initial_total = leaderboard.total_runs|default(page_runs|length, true) %}
+{% set initial_page = leaderboard.page|default(1) %}
+{% set initial_page_size = leaderboard.page_size|default(25) %}
+{% set initial_first = ((initial_page - 1) * initial_page_size) + 1 if initial_total else 0 %}
+{% set initial_last = initial_first + page_runs|length - 1 if initial_total else 0 %}
+{% set selected_scope = table_state.amp_scope|default("normal") %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -64,7 +69,7 @@
       content="A live, reproducible leaderboard for neural amp model benchmarks."
     >
     <link rel="stylesheet" href="/static/styles.css?v=20260901-paginated-leaderboard">
-    <script defer src="/static/dashboard.js?v=20260901-efficient-leaderboard"></script>
+    <script defer src="/static/dashboard.js?v=20260901-query-state"></script>
   </head>
   <body>
     <a class="skip-link" href="#leaderboard">Skip to leaderboard</a>
@@ -127,23 +132,23 @@
                 <circle cx="8.5" cy="8.5" r="5.5"></circle>
                 <path d="m13 13 4 4"></path>
               </svg>
-              <input id="model-filter" type="search" placeholder="Name or description" autocomplete="off">
+              <input id="model-filter" type="search" placeholder="Name or description" autocomplete="off" value="{{ table_state.search|default('') }}">
             </span>
           </label>
           <label class="filter-field">
             <span>Amp set</span>
             <select id="amp-scope-filter">
-              <option value="normal" selected>Normal amps</option>
-              <option value="simple">Simple amps</option>
-              <option value="all">All amps</option>
+              <option value="normal"{% if selected_scope == "normal" %} selected{% endif %}>Normal amps</option>
+              <option value="simple"{% if selected_scope == "simple" %} selected{% endif %}>Simple amps</option>
+              <option value="all"{% if selected_scope == "all" %} selected{% endif %}>All amps</option>
             </select>
           </label>
           <label class="filter-field">
             <span>Amp</span>
             <select id="amp-filter">
               <option value="">All amps</option>
-              {% for amp in amps|default([], true) if amp.id != "blackface63-simple" %}
-                <option value="{{ amp.id }}">{{ amp.name }}</option>
+              {% for amp in amps|default([], true) if selected_scope == "all" or (selected_scope == "simple") == (amp.id == "blackface63-simple") %}
+                <option value="{{ amp.id }}"{% if amp.id == table_state.amp_id|default("") %} selected{% endif %}>{{ amp.name }}</option>
               {% endfor %}
             </select>
           </label>
@@ -151,6 +156,9 @@
             <span>Creator</span>
             <select id="creator-filter">
               <option value="">All creators</option>
+              {% for creator in creators|default([], true) %}
+                <option value="{{ creator }}"{% if creator == table_state.creator|default("") %} selected{% endif %}>{{ creator }}</option>
+              {% endfor %}
             </select>
           </label>
           <button id="clear-filters" class="clear-button" type="button">Clear filters</button>
@@ -158,7 +166,7 @@
 
         <div class="table-meta">
           <p id="result-count" aria-live="polite">
-            {% if normal_runs %}1–{{ normal_runs|length }} of {{ initial_total }} runs{% else %}0 runs{% endif %}
+            {% if page_runs %}{{ initial_first }}–{{ initial_last }} of {{ initial_total }} runs{% else %}0 runs{% endif %}
           </p>
           <p><span class="lower-is-better" aria-hidden="true">↓</span> Lower error is better</p>
         </div>
@@ -209,7 +217,7 @@
               </tr>
             </thead>
             <tbody id="leaderboard-body">
-              {% for run in normal_runs %}
+              {% for run in page_runs %}
                 {% set metrics = run.metrics|default({}, true) %}
                 {% set nam_metrics = metrics.nam_a2_full|default({}, true) %}
                 {% set realtime = metrics.realtime_x|default({}, true) %}

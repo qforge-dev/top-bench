@@ -7,6 +7,20 @@
   const PAGE_SIZE = 25;
   const DEFAULT_AMP_SCOPE = "normal";
   const SIMPLE_AMP_IDS = new Set(["blackface63-simple"]);
+  const SORT_KEYS = new Set([
+    "rank",
+    "name",
+    "amp",
+    "status",
+    "positions",
+    "ampParameters",
+    "positionsPerControl",
+    "started",
+    "realtime",
+    "esr",
+    "humanWeightedEsr",
+    "mrstft",
+  ]);
 
   const elements = {
     ampFilter: document.querySelector("#amp-filter"),
@@ -821,6 +835,52 @@
     return `/api/v1/leaderboard?${parameters}`;
   }
 
+  function readPageUrl() {
+    const parameters = new URLSearchParams(window.location.search);
+    const scope = parameters.get("amp_scope");
+    const sort = parameters.get("sort");
+    const direction = parameters.get("direction");
+    return {
+      ampId: parameters.get("amp_id") || "",
+      ampScope: ["normal", "simple", "all"].includes(scope) ? scope : DEFAULT_AMP_SCOPE,
+      creator: parameters.get("creator") || "",
+      direction: direction === "desc" ? "descending" : "ascending",
+      search: parameters.get("search") || "",
+      sort: SORT_KEYS.has(sort) ? sort : "esr",
+    };
+  }
+
+  function syncPageUrl() {
+    const url = new URL(window.location.href);
+    const parameters = url.searchParams;
+    for (const name of [
+      "amp_scope",
+      "amp_id",
+      "creator",
+      "search",
+      "sort",
+      "direction",
+      "page",
+      "page_size",
+    ]) {
+      parameters.delete(name);
+    }
+    parameters.set("amp_scope", ampScope());
+    parameters.set("sort", state.sortKey);
+    parameters.set("direction", state.sortDirection === "ascending" ? "asc" : "desc");
+    parameters.set("page", String(state.page));
+    parameters.set("page_size", String(state.pageSize));
+    const ampId = elements.ampFilter?.value || "";
+    const creator = elements.creatorFilter?.value || "";
+    const search = (elements.modelFilter?.value || "").trim();
+    if (ampId) parameters.set("amp_id", ampId);
+    if (creator) parameters.set("creator", creator);
+    if (search) parameters.set("search", search);
+    const target = `${url.pathname}${parameters.size ? `?${parameters}` : ""}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (target !== current) window.history.replaceState(window.history.state, "", target);
+  }
+
   function applyPayload(payload) {
     const runs = runsFromPayload(payload);
     const amps = ampsFromPayload(payload, runs);
@@ -853,6 +913,7 @@
     state.dataSignature = signature;
     updateFilterOptions();
     render();
+    syncPageUrl();
   }
 
   async function pollLeaderboard({ loading = false } = {}) {
@@ -903,6 +964,7 @@
 
   function refreshFromFirstPage() {
     state.page = 1;
+    syncPageUrl();
     if (state.serverPaginated) {
       void pollLeaderboard({ loading: true });
     } else {
@@ -929,6 +991,8 @@
   }
 
   elements.modelFilter?.addEventListener("input", () => {
+    state.page = 1;
+    syncPageUrl();
     if (!state.serverPaginated) {
       render();
       return;
@@ -962,12 +1026,14 @@
   elements.pagePrevious?.addEventListener("click", () => {
     if (state.page <= 1) return;
     state.page -= 1;
+    syncPageUrl();
     void pollLeaderboard({ loading: true });
   });
 
   elements.pageNext?.addEventListener("click", () => {
     if (state.page >= state.totalPages) return;
     state.page += 1;
+    syncPageUrl();
     void pollLeaderboard({ loading: true });
   });
 
@@ -986,6 +1052,11 @@
   state.totalRuns = initial.totalRuns ?? state.runs.length;
   state.totalPages = initial.totalPages || 1;
   state.serverPaginated = initial.serverPaginated || false;
+  const pageUrl = readPageUrl();
+  state.sortKey = pageUrl.sort;
+  state.sortDirection = pageUrl.direction;
+  if (elements.ampScopeFilter) elements.ampScopeFilter.value = pageUrl.ampScope;
+  if (elements.modelFilter) elements.modelFilter.value = pageUrl.search;
   state.dataSignature = JSON.stringify({
     amps: state.amps,
     chartRuns: state.chartRuns,
@@ -998,6 +1069,15 @@
     totalPages: state.totalPages,
   });
   updateFilterOptions();
+  if (elements.ampFilter
+    && [...elements.ampFilter.options].some((option) => option.value === pageUrl.ampId)) {
+    elements.ampFilter.value = pageUrl.ampId;
+  }
+  if (elements.creatorFilter
+    && [...elements.creatorFilter.options].some((option) => option.value === pageUrl.creator)) {
+    elements.creatorFilter.value = pageUrl.creator;
+  }
   render();
+  syncPageUrl();
   window.setInterval(() => void pollLeaderboard(), POLL_INTERVAL_MS);
 })();

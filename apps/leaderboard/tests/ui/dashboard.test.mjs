@@ -299,6 +299,58 @@ test("server pagination keeps filtering and sorting global", async () => {
     new URL(requests.at(-1), "https://arena.test").searchParams.get("amp_id"),
     "pg-clean",
   );
+  assert.equal(dom.window.location.search, "?amp_scope=normal&sort=name&direction=asc&page=1&page_size=2&amp_id=pg-clean");
+});
+
+test("query parameters restore and persist the complete table state", async () => {
+  const selectedRun = run("run-pg", "PG Model", "pg-clean", "PG Clean");
+  const payload = {
+    runs: [selectedRun],
+    chart_runs: [selectedRun],
+    amps: [
+      { id: "pg-clean", name: "PG Clean", amp_type: "guitar", control_names: [] },
+      {
+        id: "blackface63-simple",
+        name: "Blackface 63 Simple",
+        amp_type: "guitar",
+        control_names: [],
+      },
+    ],
+    creators: ["Test Lab"],
+    run_ranks: { "run-pg": 1 },
+    page: 2,
+    page_size: 10,
+    total_runs: 11,
+    total_pages: 2,
+  };
+  const dom = new JSDOM(markup(payload), {
+    runScripts: "outside-only",
+    url: "https://arena.test/?amp_scope=all&amp_id=pg-clean&creator=Test+Lab&search=PG&sort=name&direction=desc&page=2&page_size=10",
+  });
+  Object.defineProperty(dom.window.document, "hidden", { configurable: true, value: false });
+  dom.window.setInterval = () => 1;
+  dom.window.fetch = async () => ({ ok: true, json: async () => payload });
+  const script = await readFile(SCRIPT_URL, "utf8");
+  dom.window.eval(script);
+
+  const { document } = dom.window;
+  assert.equal(document.querySelector("#amp-scope-filter").value, "all");
+  assert.equal(document.querySelector("#amp-filter").value, "pg-clean");
+  assert.equal(document.querySelector("#creator-filter").value, "Test Lab");
+  assert.equal(document.querySelector("#model-filter").value, "PG");
+  assert.equal(document.querySelector("#current-page").textContent, "2");
+  assert.equal(document.querySelector('[data-sort="name"]').closest("th").getAttribute("aria-sort"), "descending");
+  assert.equal(document.querySelector("#leaderboard-body tr").dataset.runId, "run-pg");
+
+  const restored = new URL(dom.window.location.href).searchParams;
+  assert.equal(restored.get("amp_scope"), "all");
+  assert.equal(restored.get("amp_id"), "pg-clean");
+  assert.equal(restored.get("creator"), "Test Lab");
+  assert.equal(restored.get("search"), "PG");
+  assert.equal(restored.get("sort"), "name");
+  assert.equal(restored.get("direction"), "desc");
+  assert.equal(restored.get("page"), "2");
+  assert.equal(restored.get("page_size"), "10");
 });
 
 test("live progress refreshes do not replace the Pareto graph", async () => {

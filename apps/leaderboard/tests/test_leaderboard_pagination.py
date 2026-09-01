@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -216,3 +217,29 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
             ).json()
             assert clamped["page"] == 2
             assert len(clamped["runs"]) == 5
+
+            dashboard = await client.get(
+                "/",
+                params={
+                    "amp_scope": "normal",
+                    "amp_id": "normal-amp",
+                    "creator": "Lab B",
+                    "search": "TARGET",
+                    "sort": "name",
+                    "direction": "desc",
+                    "page": 1,
+                    "page_size": 10,
+                },
+            )
+            dashboard.raise_for_status()
+            opening = '<script id="leaderboard-initial-data" type="application/json">'
+            serialized = dashboard.text.split(opening, maxsplit=1)[1].split(
+                "</script>", maxsplit=1
+            )[0]
+            initial = json.loads(serialized)
+            assert initial["total_runs"] == 1
+            assert [run["name"] for run in initial["runs"]] == ["model-17"]
+            assert 'value="TARGET"' in dashboard.text
+            assert '<option value="normal" selected>Normal amps</option>' in dashboard.text
+            assert '<option value="normal-amp" selected>Normal Amp</option>' in dashboard.text
+            assert '<option value="Lab B" selected>Lab B</option>' in dashboard.text
