@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 _EVENT_BATCH_SIZE = 32
 _MAX_EVENT_BATCH_SIZE = 100
-_UPLOAD_RETRY_DELAYS = (0.0, 0.25, 0.75, 1.5)
-_RETRYABLE_UPLOAD_STATUSES = frozenset({429, 502, 503, 504})
+_UPLOAD_RETRY_DELAYS = (0.0, 0.25, 0.75, 1.5, 3.0, 5.0, 10.0)
+_RETRYABLE_UPLOAD_STATUSES = frozenset({429, 500, 502, 503, 504, *range(520, 528)})
 
 
 class BenchmarkGateway(Protocol):

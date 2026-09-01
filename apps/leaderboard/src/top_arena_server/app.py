@@ -833,7 +833,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             )
-        await services.scoring.enqueue(run_case_id)
+        await services.scoring.enqueue(run_case_id, run_id=run_id)
         finished_at = time.perf_counter()
         LOGGER.info(
             "upload.accepted run_id=%s case_id=%s bytes=%d validate_ms=%.1f "

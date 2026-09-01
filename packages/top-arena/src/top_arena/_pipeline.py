@@ -13,9 +13,14 @@ import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, BinaryIO, Protocol, runtime_checkable
 
 import soundfile as sf
+
+if os.name == "nt":
+    import msvcrt as _win_lock
+else:
+    import fcntl as _posix_lock
 
 from top_arena._models import (
     BenchmarkCase,
@@ -31,6 +36,7 @@ if TYPE_CHECKING:
 
 
 LOGGER = logging.getLogger(__name__)
+_CACHE_LOCK_RETRY_SECONDS = 0.05
 
 
 @runtime_checkable
@@ -232,27 +238,44 @@ class BenchmarkRun:
                 return destination
 
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temporary_path = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.part")
-            await self._gateway.emit_event(
-                run_id,
-                "download.started",
-                case.id,
-                {"dry_key": case.dry_key},
-            )
+            file_lock = await _acquire_cache_file_lock(destination)
             try:
-                await self._gateway.download_dry(case, temporary_path)
-                await asyncio.to_thread(os.replace, temporary_path, destination)
-            except BaseException:
-                with suppress(OSError):
-                    temporary_path.unlink()
-                raise
-            await self._gateway.emit_event(
-                run_id,
-                "download.completed",
-                case.id,
-                {"dry_key": case.dry_key},
-            )
-            return destination
+                # Another process may have populated the cache while this process
+                # was waiting for the filesystem lock.
+                if destination.is_file():
+                    await self._gateway.emit_event(
+                        run_id,
+                        "download.cache_hit",
+                        case.id,
+                        {"dry_key": case.dry_key, "waited_for_process": True},
+                    )
+                    return destination
+
+                temporary_path = destination.with_name(
+                    f".{destination.name}.{uuid.uuid4().hex}.part"
+                )
+                await self._gateway.emit_event(
+                    run_id,
+                    "download.started",
+                    case.id,
+                    {"dry_key": case.dry_key},
+                )
+                try:
+                    await self._gateway.download_dry(case, temporary_path)
+                    await asyncio.to_thread(os.replace, temporary_path, destination)
+                except BaseException:
+                    with suppress(OSError):
+                        temporary_path.unlink()
+                    raise
+                await self._gateway.emit_event(
+                    run_id,
+                    "download.completed",
+                    case.id,
+                    {"dry_key": case.dry_key},
+                )
+                return destination
+            finally:
+                _release_cache_file_lock(file_lock)
 
     async def _run_model(
         self,
@@ -399,6 +422,56 @@ def _resolve_output_path(output: Path | str, case_id: str) -> Path:
         msg = f"model callback returned a missing file for case {case_id!r}: {output_path}"
         raise FileNotFoundError(msg)
     return output_path
+
+
+async def _acquire_cache_file_lock(destination: Path) -> BinaryIO:
+    lock_path = destination.with_name(f".{destination.name}.lock")
+    # An in-process Event cannot be notified by the process holding this lock.
+    while (lock_file := _try_cache_file_lock(lock_path)) is None:  # noqa: ASYNC110
+        await asyncio.sleep(_CACHE_LOCK_RETRY_SECONDS)
+    return lock_file
+
+
+def _try_cache_file_lock(lock_path: Path) -> BinaryIO | None:
+    lock_file = lock_path.open("a+b")
+    try:
+        if os.name == "nt":
+            if lock_file.tell() == 0:
+                _ = lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            _win_lock.locking(  # type: ignore[attr-defined]
+                lock_file.fileno(),
+                _win_lock.LK_NBLCK,  # type: ignore[attr-defined]
+                1,
+            )
+        else:
+            _posix_lock.flock(
+                lock_file.fileno(),
+                _posix_lock.LOCK_EX | _posix_lock.LOCK_NB,
+            )
+    except (BlockingIOError, OSError):
+        lock_file.close()
+        return None
+    except BaseException:
+        lock_file.close()
+        raise
+    return lock_file
+
+
+def _release_cache_file_lock(lock_file: BinaryIO) -> None:
+    try:
+        if os.name == "nt":
+            lock_file.seek(0)
+            _win_lock.locking(  # type: ignore[attr-defined]
+                lock_file.fileno(),
+                _win_lock.LK_UNLCK,  # type: ignore[attr-defined]
+                1,
+            )
+        else:
+            _posix_lock.flock(lock_file.fileno(), _posix_lock.LOCK_UN)
+    finally:
+        lock_file.close()
 
 
 def _transcode_to_flac(source: Path, destination: Path) -> None:

@@ -6,6 +6,7 @@ import io
 import logging
 import time
 import weakref
+from collections import deque
 from collections.abc import Sequence
 from contextlib import suppress
 from typing import Any, cast
@@ -48,7 +49,9 @@ class ScoringService:
         self._database = database
         self._storage = storage
         self._settings = settings
-        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._ready_runs: asyncio.Queue[str] = asyncio.Queue()
+        self._pending_by_run: dict[str, deque[str]] = {}
+        self._scheduled_runs: set[str] = set()
         self._workers: list[asyncio.Task[None]] = []
         self._queued: set[str] = set()
         self._enqueued_at: dict[str, float] = {}
@@ -61,7 +64,7 @@ class ScoringService:
 
     @property
     def queue_depth(self) -> int:
-        return self._queue.qsize()
+        return len(self._queued)
 
     @property
     def worker_count(self) -> int:
@@ -71,8 +74,10 @@ class ScoringService:
         async with self._database.session() as session:
             recoverable = tuple(
                 (
-                    await session.scalars(
-                        select(RunCase.id).where(RunCase.status.in_(("uploaded", "scoring")))
+                    await session.execute(
+                        select(RunCase.id, RunCase.run_id)
+                        .where(RunCase.status.in_(("uploaded", "scoring")))
+                        .order_by(RunCase.run_id, RunCase.uploaded_at, RunCase.id)
                     )
                 ).all()
             )
@@ -86,8 +91,8 @@ class ScoringService:
                     )
                 ).all()
             )
-        for run_case_id in recoverable:
-            await self.enqueue(run_case_id)
+        for run_case_id, run_id in recoverable:
+            await self.enqueue(run_case_id, run_id=run_id)
         for run_id in finalizable:
             await self.finalize_if_ready(run_id)
         self._workers = [
@@ -103,16 +108,21 @@ class ScoringService:
                 await worker
         self._workers.clear()
 
-    async def enqueue(self, run_case_id: str) -> None:
+    async def enqueue(self, run_case_id: str, *, run_id: str) -> None:
         if run_case_id not in self._queued:
             self._queued.add(run_case_id)
             self._enqueued_at[run_case_id] = time.perf_counter()
-            await self._queue.put(run_case_id)
-            depth = self._queue.qsize()
+            pending = self._pending_by_run.setdefault(run_id, deque())
+            pending.append(run_case_id)
+            if run_id not in self._scheduled_runs:
+                self._scheduled_runs.add(run_id)
+                await self._ready_runs.put(run_id)
+            depth = self.queue_depth
             if depth in {10, 50, 100, 250, 500, 1_000}:
                 LOGGER.warning(
-                    "score.queue_depth depth=%d workers=%d",
+                    "score.queue_depth depth=%d active_runs=%d workers=%d",
                     depth,
+                    len(self._scheduled_runs),
                     self.worker_count,
                 )
 
@@ -131,7 +141,9 @@ class ScoringService:
 
     async def _worker(self) -> None:
         while True:
-            run_case_id = await self._queue.get()
+            run_id = await self._ready_runs.get()
+            pending = self._pending_by_run[run_id]
+            run_case_id = pending.popleft()
             self._queued.discard(run_case_id)
             enqueued_at = self._enqueued_at.pop(run_case_id, time.perf_counter())
             queue_wait_ms = (time.perf_counter() - enqueued_at) * 1_000
@@ -146,7 +158,12 @@ class ScoringService:
                 )
                 await self._mark_failed(run_case_id)
             finally:
-                self._queue.task_done()
+                if pending:
+                    self._ready_runs.put_nowait(run_id)
+                else:
+                    del self._pending_by_run[run_id]
+                    self._scheduled_runs.discard(run_id)
+                self._ready_runs.task_done()
 
     async def _score(self, run_case_id: str, *, queue_wait_ms: float) -> None:
         started_at = time.perf_counter()

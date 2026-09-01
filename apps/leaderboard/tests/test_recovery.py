@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import httpx
+import pytest
 from sqlalchemy import func, select
 from top_arena_server.app import create_app
 from top_arena_server.config import Settings
@@ -11,6 +12,46 @@ from top_arena_server.database import Database
 from top_arena_server.models import Amp, BenchmarkCase, BenchmarkRun, RunCase, RunEvent
 from top_arena_server.scoring import ScoringService
 from top_arena_server.storage import create_storage
+
+
+async def test_scoring_queue_round_robins_between_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'fair-queue.db'}",
+        storage_backend="filesystem",
+        storage_path=tmp_path / "objects",
+        score_worker_count=1,
+    )
+    database = Database(settings.database_url)
+    await database.initialize()
+    scoring = ScoringService(database, create_storage(settings), settings)
+    scored: list[str] = []
+    all_scored = asyncio.Event()
+
+    async def record_score(run_case_id: str, *, queue_wait_ms: float) -> None:
+        del queue_wait_ms
+        scored.append(run_case_id)
+        if len(scored) == 6:
+            all_scored.set()
+
+    monkeypatch.setattr(scoring, "_score", record_score)
+    for run_case_id in ("a-1", "a-2", "a-3"):
+        await scoring.enqueue(run_case_id, run_id="run-a")
+    for run_case_id in ("b-1", "b-2", "b-3"):
+        await scoring.enqueue(run_case_id, run_id="run-b")
+
+    await scoring.start()
+    try:
+        async with asyncio.timeout(1):
+            await all_scored.wait()
+    finally:
+        await scoring.stop()
+        await database.close()
+
+    assert scored == ["a-1", "b-1", "a-2", "b-2", "a-3", "b-3"]
+    assert scoring.queue_depth == 0
 
 
 async def test_startup_finalizes_a_committed_finished_run(tmp_path: Path) -> None:

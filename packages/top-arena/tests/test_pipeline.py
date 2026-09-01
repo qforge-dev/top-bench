@@ -256,6 +256,48 @@ async def test_dry_audio_is_reused_from_the_local_cache(tmp_path: Path) -> None:
     assert "download.cache_hit" in gateway.events
 
 
+async def test_concurrent_runs_deduplicate_downloads_across_instances(tmp_path: Path) -> None:
+    case = BenchmarkCase("case-1", ((0.0,),), "dry/shared.wav", "d" * 64)
+    first_gateway = FakeGateway((case,))
+    second_gateway = FakeGateway((case,))
+    metadata = BenchmarkMetadata(
+        name="concurrent-cache-test",
+        creator="test-suite",
+        unique_positions_used=1,
+        audio_duration_sum=5.0,
+        turns=1,
+        training_time=1.0,
+        description="cross-process cache",
+        parameter_count=1,
+    )
+    first_run = BenchmarkRun(
+        gateway=first_gateway,
+        metadata=metadata,
+        cache_dir=tmp_path / "cache",
+    )
+    second_run = BenchmarkRun(
+        gateway=second_gateway,
+        metadata=metadata,
+        cache_dir=tmp_path / "cache",
+    )
+
+    first_path, second_path = await asyncio.gather(
+        first_run._get_dry_audio("run-1", case),  # noqa: SLF001
+        second_run._get_dry_audio("run-2", case),  # noqa: SLF001
+    )
+
+    assert first_path == second_path
+    assert first_path.is_file()
+    assert first_gateway.downloaded + second_gateway.downloaded == ["case-1"]
+    assert (
+        sum(
+            gateway.events.count("download.cache_hit")
+            for gateway in (first_gateway, second_gateway)
+        )
+        == 1
+    )
+
+
 async def test_model_wav_output_is_staged_as_pcm24_flac(tmp_path: Path) -> None:
     case = BenchmarkCase("case-1", ((0.0,),), "dry/input.wav", "f" * 64)
     gateway = FakeGateway((case,))

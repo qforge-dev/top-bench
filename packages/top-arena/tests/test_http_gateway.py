@@ -105,7 +105,11 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     assert event_batches == [[{"kind": "download.completed", "case_id": "case-1", "payload": {}}]]
 
 
-async def test_http_gateway_retries_a_transient_upload(tmp_path: Path) -> None:
+@pytest.mark.parametrize("transient_status", [503, 521])
+async def test_http_gateway_retries_a_transient_upload(
+    tmp_path: Path,
+    transient_status: int,
+) -> None:
     attempts = 0
     uploaded_bodies: list[bytes] = []
 
@@ -113,7 +117,7 @@ async def test_http_gateway_retries_a_transient_upload(tmp_path: Path) -> None:
         nonlocal attempts
         attempts += 1
         uploaded_bodies.append(await request.aread())
-        return httpx.Response(503 if attempts == 1 else 202)
+        return httpx.Response(transient_status if attempts == 1 else 202)
 
     wet_path = tmp_path / "wet.flac"
     wet_path.write_bytes(b"retryable wet audio")

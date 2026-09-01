@@ -158,8 +158,9 @@ your runtime supports parallel inference. Download and upload concurrency defaul
 
 Every stage transition is appended to the run's server-side event log. Dry inputs are
 cached in the platform-appropriate user cache directory, and completed upload staging
-files are removed automatically. Set `cache_dir=` on `benchmark.create(...)` to choose
-a different cache location.
+files are removed automatically. The cache is shared and filesystem-locked across
+processes, so parallel runs from the same user download each dry input only once. Set
+`cache_dir=` on `benchmark.create(...)` to choose a different shared cache location.
 
 ## Configuration
 

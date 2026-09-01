@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Deduplicated dry-input downloads across concurrent local processes with a shared
+  filesystem lock, and made uploads resilient to longer proxy and deployment outages.
+- Changed server scoring to round-robin fairly across active runs and use multiple
+  single-threaded workers without native-library CPU oversubscription.
 - Limited chart labels to key Pareto results and added server-backed leaderboard
   pagination so filtering and sorting remain global while each page loads only 25 full runs.
 - Added ordered amp parameter names and every stored benchmark-position value to amp
