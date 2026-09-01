@@ -14,6 +14,7 @@ from top_arena._models import BenchmarkCase, BenchmarkMetadata
 
 async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> None:
     calls: list[tuple[str, str]] = []
+    event_batches: list[list[dict[str, object]]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:  # noqa: PLR0911
         calls.append((request.method, request.url.path))
@@ -43,8 +44,10 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
             )
         if request.url.path == "/objects/example.wav":
             return httpx.Response(200, content=b"dry audio")
-        if request.url.path == "/api/v1/runs/run-1/events":
-            return httpx.Response(201, json={"id": "event-1"})
+        if request.url.path == "/api/v1/runs/run-1/events/batch":
+            body = json.loads(request.content)
+            event_batches.append(body["events"])
+            return httpx.Response(201, json={"accepted": len(body["events"])})
         if request.url.path == "/api/v1/runs/run-1/cases/case-1/audio":
             assert request.url.params["realtime_x"] == "2.5"
             assert request.content == b"wet audio"
@@ -99,6 +102,31 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     assert snapshot.result.metrics == {"esr": {"mean": 0.01}}
     assert ("GET", "/objects/example.wav") in calls
     assert ("PATCH", "/api/v1/runs/run-1") in calls
+    assert event_batches == [[{"kind": "download.completed", "case_id": "case-1", "payload": {}}]]
+
+
+async def test_http_gateway_retries_a_transient_upload(tmp_path: Path) -> None:
+    attempts = 0
+    uploaded_bodies: list[bytes] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        uploaded_bodies.append(await request.aread())
+        return httpx.Response(503 if attempts == 1 else 202)
+
+    wet_path = tmp_path / "wet.flac"
+    wet_path.write_bytes(b"retryable wet audio")
+    gateway = HttpBenchmarkGateway(
+        "https://arena.test",
+        transport=httpx.MockTransport(respond),
+    )
+
+    await gateway.upload_wet("run-1", "case-1", wet_path, 2.5)
+    await gateway.aclose()
+
+    assert attempts == 2
+    assert uploaded_bodies == [b"retryable wet audio", b"retryable wet audio"]
 
 
 @pytest.mark.parametrize(

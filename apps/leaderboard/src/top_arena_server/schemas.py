@@ -83,6 +83,14 @@ class EventRequest(ApiModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class EventBatchRequest(ApiModel):
+    events: list[EventRequest] = Field(min_length=1, max_length=100)
+
+
+class EventBatchResponse(ApiModel):
+    accepted: int
+
+
 class EventResponse(ApiModel):
     id: int
     kind: str

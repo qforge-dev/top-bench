@@ -14,6 +14,12 @@ Environment=HOME=/home/ubuntu
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=UV_NO_PROGRESS=1
 Environment=UV_PYTHON=3.14
+# Keep one scoring job from consuming every CPU core through native math libraries.
+Environment=OMP_NUM_THREADS=4
+Environment=OPENBLAS_NUM_THREADS=4
+Environment=MKL_NUM_THREADS=4
+Environment=NUMEXPR_NUM_THREADS=4
+Environment=VECLIB_MAXIMUM_THREADS=4
 ExecStartPre=/usr/bin/test -x /home/ubuntu/.local/bin/uv
 ExecStartPre=/usr/bin/test -r /home/ubuntu/top-bench/uv.lock
 ExecStartPre=/usr/bin/test -x /home/ubuntu/top-bench/.venv/bin/alembic

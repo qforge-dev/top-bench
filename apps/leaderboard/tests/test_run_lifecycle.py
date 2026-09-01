@@ -93,6 +93,13 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                 headers={"content-type": "audio/wav"},
             )
             upload_response.raise_for_status()
+            idempotent_retry = await client.put(
+                f"/api/v1/runs/{run_id}/cases/{case['id']}/audio",
+                params={"realtime_x": 12.5},
+                content=dry_response.content,
+                headers={"content-type": "audio/wav"},
+            )
+            assert idempotent_retry.status_code == 202
             finish_response = await client.post(f"/api/v1/runs/{run_id}/finish")
             finish_response.raise_for_status()
 

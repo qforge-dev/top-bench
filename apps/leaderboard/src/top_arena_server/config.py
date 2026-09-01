@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8000
     score_worker_count: int = 1
+    upload_concurrency_limit: int = 8
+    slow_request_log_seconds: float = 1.0
     score_poll_interval_seconds: float = 0.25
     run_completion_timeout_seconds: float = 600.0
     log_level: str = "INFO"

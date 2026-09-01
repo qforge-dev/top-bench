@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import TYPE_CHECKING, Protocol, Self, cast
 from urllib.parse import quote
 
@@ -19,6 +20,13 @@ from top_arena._models import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
+
+
+LOGGER = logging.getLogger(__name__)
+_EVENT_BATCH_SIZE = 32
+_MAX_EVENT_BATCH_SIZE = 100
+_UPLOAD_RETRY_DELAYS = (0.0, 0.25, 0.75, 1.5)
+_RETRYABLE_UPLOAD_STATUSES = frozenset({429, 502, 503, 504})
 
 
 class BenchmarkGateway(Protocol):
@@ -61,6 +69,11 @@ class HttpBenchmarkGateway:
         self._timeout: httpx.Timeout | float = timeout
         self._transport: httpx.AsyncBaseTransport | None = transport
         self._client: httpx.AsyncClient | None = None
+        self._event_buffer: list[dict[str, object]] = []
+        self._event_run_id: str | None = None
+        self._event_lock = asyncio.Lock()
+        self._event_retry_at = 0.0
+        self._event_retry_delay = 0.5
 
     async def create_run(self, metadata: BenchmarkMetadata, amp_id: str) -> str:
         response = await self._get_client().post(
@@ -121,15 +134,29 @@ class HttpBenchmarkGateway:
         case_id: str | None = None,
         payload: dict[str, object] | None = None,
     ) -> None:
-        response = await self._get_client().post(
-            f"api/v1/runs/{quote(run_id, safe='')}/events",
-            json={
-                "kind": kind,
-                "case_id": case_id,
-                "payload": payload or {},
-            },
-        )
-        _ = response.raise_for_status()
+        required = kind == "run.client_failed"
+        event: dict[str, object] = {
+            "kind": kind,
+            "case_id": case_id,
+            "payload": payload or {},
+        }
+        async with self._event_lock:
+            if self._event_run_id not in {None, run_id}:
+                previous_run_id = self._event_run_id
+                await self._flush_events_locked(previous_run_id, required=False)
+                if self._event_buffer:
+                    msg = "cannot buffer telemetry for multiple benchmark runs"
+                    raise RuntimeError(msg)
+            self._event_run_id = run_id
+            if not required or not any(
+                buffered.get("kind") == "run.client_failed" for buffered in self._event_buffer
+            ):
+                self._event_buffer.append(event)
+            loop_time = asyncio.get_running_loop().time()
+            if required:
+                await self._flush_events_locked(run_id, required=True)
+            elif len(self._event_buffer) >= _EVENT_BATCH_SIZE and loop_time >= self._event_retry_at:
+                await self._flush_events_locked(run_id, required=False)
 
     async def upload_wet(
         self,
@@ -138,15 +165,36 @@ class HttpBenchmarkGateway:
         wet_path: Path,
         realtime_x: float,
     ) -> None:
-        response = await self._get_client().put(
-            (f"api/v1/runs/{quote(run_id, safe='')}/cases/{quote(case_id, safe='')}/audio"),
-            params={"realtime_x": realtime_x},
-            content=_file_chunks(wet_path),
-            headers={"content-type": "audio/flac"},
-        )
-        _ = response.raise_for_status()
+        path = f"api/v1/runs/{quote(run_id, safe='')}/cases/{quote(case_id, safe='')}/audio"
+        for attempt, delay in enumerate(_UPLOAD_RETRY_DELAYS):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                response = await self._get_client().put(
+                    path,
+                    params={"realtime_x": realtime_x},
+                    content=_file_chunks(wet_path),
+                    headers={"content-type": "audio/flac"},
+                )
+                if (
+                    response.status_code not in _RETRYABLE_UPLOAD_STATUSES
+                    or attempt == len(_UPLOAD_RETRY_DELAYS) - 1
+                ):
+                    _ = response.raise_for_status()
+                    return
+            except httpx.RequestError:
+                if attempt == len(_UPLOAD_RETRY_DELAYS) - 1:
+                    raise
+            LOGGER.warning(
+                "retrying candidate upload run_id=%s case_id=%s attempt=%d",
+                run_id,
+                case_id,
+                attempt + 2,
+            )
 
     async def finish_run(self, run_id: str) -> None:
+        async with self._event_lock:
+            await self._flush_events_locked(run_id, required=False)
         response = await self._get_client().post(f"api/v1/runs/{quote(run_id, safe='')}/finish")
         _ = response.raise_for_status()
 
@@ -179,9 +227,49 @@ class HttpBenchmarkGateway:
         )
 
     async def aclose(self) -> None:
+        if self._client is not None and self._event_buffer and self._event_run_id is not None:
+            async with self._event_lock:
+                await self._flush_events_locked(self._event_run_id, required=False)
         client, self._client = self._client, None
         if client is not None:
             await client.aclose()
+
+    async def _flush_events_locked(self, run_id: str, *, required: bool) -> None:
+        while self._event_buffer:
+            batch = self._event_buffer[:_MAX_EVENT_BATCH_SIZE]
+            try:
+                await self._post_event_batch(run_id, batch)
+            except Exception:
+                loop_time = asyncio.get_running_loop().time()
+                self._event_retry_at = loop_time + self._event_retry_delay
+                self._event_retry_delay = min(self._event_retry_delay * 2.0, 10.0)
+                if required:
+                    raise
+                LOGGER.warning(
+                    "could not flush benchmark telemetry run_id=%s buffered=%d",
+                    run_id,
+                    len(self._event_buffer),
+                    exc_info=True,
+                )
+                return
+            del self._event_buffer[: len(batch)]
+            self._event_retry_at = 0.0
+            self._event_retry_delay = 0.5
+        self._event_run_id = None
+
+    async def _post_event_batch(
+        self,
+        run_id: str,
+        events: list[dict[str, object]],
+    ) -> None:
+        path = f"api/v1/runs/{quote(run_id, safe='')}/events"
+        response = await self._get_client().post(f"{path}/batch", json={"events": events})
+        if response.status_code in {404, 405}:
+            for event in events:
+                fallback = await self._get_client().post(path, json=event)
+                _ = fallback.raise_for_status()
+            return
+        _ = response.raise_for_status()
 
     async def __aenter__(self) -> Self:
         _ = self._get_client()

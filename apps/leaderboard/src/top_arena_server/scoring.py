@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import logging
+import time
 import weakref
 from collections.abc import Sequence
 from contextlib import suppress
@@ -19,11 +21,24 @@ from sqlalchemy.orm import joinedload
 from .config import Settings
 from .database import Database
 from .diagnostics import aggregate_diagnostics, calculate_case_diagnostics
-from .metrics import AudioMetrics, calculate_metrics
+from .metrics import AudioMetrics, CaseAnalysis, calculate_metrics
 from .models import BenchmarkCase, BenchmarkRun, RunCase, RunEvent, now_utc
 from .storage import ObjectStorage
 
 LOGGER = logging.getLogger(__name__)
+_NAM_CACHE_VERSION = "top-arena-nam-metrics-v1"
+
+
+def baseline_cache_signature(benchmark_case: BenchmarkCase) -> str:
+    source = "\0".join(
+        (
+            _NAM_CACHE_VERSION,
+            benchmark_case.reference_wet_key,
+            str(benchmark_case.reference_latency_samples),
+            benchmark_case.nam_reference_wet_key or "",
+        )
+    )
+    return hashlib.sha256(source.encode()).hexdigest()
 
 
 class ScoringService:
@@ -36,9 +51,21 @@ class ScoringService:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
         self._queued: set[str] = set()
+        self._enqueued_at: dict[str, float] = {}
         self._finalization_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
             weakref.WeakValueDictionary()
         )
+        self._baseline_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
+
+    @property
+    def queue_depth(self) -> int:
+        return self._queue.qsize()
+
+    @property
+    def worker_count(self) -> int:
+        return len(self._workers)
 
     async def start(self) -> None:
         async with self._database.session() as session:
@@ -79,7 +106,15 @@ class ScoringService:
     async def enqueue(self, run_case_id: str) -> None:
         if run_case_id not in self._queued:
             self._queued.add(run_case_id)
+            self._enqueued_at[run_case_id] = time.perf_counter()
             await self._queue.put(run_case_id)
+            depth = self._queue.qsize()
+            if depth in {10, 50, 100, 250, 500, 1_000}:
+                LOGGER.warning(
+                    "score.queue_depth depth=%d workers=%d",
+                    depth,
+                    self.worker_count,
+                )
 
     async def finalize_if_ready(self, run_id: str) -> bool:
         # PostgreSQL serializes these transactions with FOR UPDATE. SQLite ignores
@@ -98,15 +133,23 @@ class ScoringService:
         while True:
             run_case_id = await self._queue.get()
             self._queued.discard(run_case_id)
+            enqueued_at = self._enqueued_at.pop(run_case_id, time.perf_counter())
+            queue_wait_ms = (time.perf_counter() - enqueued_at) * 1_000
             try:
-                await self._score(run_case_id)
+                await self._score(run_case_id, queue_wait_ms=queue_wait_ms)
             except Exception:
-                LOGGER.exception("scoring failed for run case %s", run_case_id)
+                LOGGER.exception(
+                    "score.failed run_case_id=%s queue_wait_ms=%.1f queue_depth=%d",
+                    run_case_id,
+                    queue_wait_ms,
+                    self.queue_depth,
+                )
                 await self._mark_failed(run_case_id)
             finally:
                 self._queue.task_done()
 
-    async def _score(self, run_case_id: str) -> None:
+    async def _score(self, run_case_id: str, *, queue_wait_ms: float) -> None:
+        started_at = time.perf_counter()
         async with self._database.session() as session:
             run_case = await session.scalar(
                 select(RunCase)
@@ -130,18 +173,18 @@ class ScoringService:
             run_id = run_case.run_id
             reference_key = run_case.benchmark_case.reference_wet_key
             reference_latency_samples = run_case.benchmark_case.reference_latency_samples
-            nam_reference_key = run_case.benchmark_case.nam_reference_wet_key
             dry_key = run_case.benchmark_case.dry_key
             candidate_key = run_case.candidate_wet_key
+            benchmark_case_id = run_case.benchmark_case.id
+            baseline_signature = baseline_cache_signature(run_case.benchmark_case)
 
+        loaded_at = time.perf_counter()
         reference_bytes, candidate_bytes, dry_bytes = await asyncio.gather(
             self._storage.get(reference_key),
             self._storage.get(candidate_key),
             self._storage.get(dry_key),
         )
-        nam_reference_bytes = (
-            await self._storage.get(nam_reference_key) if nam_reference_key is not None else None
-        )
+        storage_loaded_at = time.perf_counter()
         metrics, diagnostics = await asyncio.to_thread(
             self._metrics_and_diagnostics_from_audio,
             reference_bytes,
@@ -149,18 +192,13 @@ class ScoringService:
             dry_bytes,
             reference_latency_samples=reference_latency_samples,
         )
-        nam_result = (
-            await asyncio.to_thread(
-                self._metrics_and_diagnostics_from_audio,
-                reference_bytes,
-                nam_reference_bytes,
-                dry_bytes,
-                reference_latency_samples=reference_latency_samples,
-            )
-            if nam_reference_bytes is not None
-            else None
+        candidate_scored_at = time.perf_counter()
+        nam_metrics, baseline_cache = await self._nam_result(
+            benchmark_case_id,
+            expected_signature=baseline_signature,
+            reference_bytes=reference_bytes,
         )
-        nam_metrics, nam_diagnostics = nam_result if nam_result is not None else (None, None)
+        baseline_scored_at = time.perf_counter()
 
         async with self._database.session() as session:
             run_case = await session.get(RunCase, run_case_id)
@@ -182,8 +220,6 @@ class ScoringService:
                 run_case.nam_level_db = nam_metrics.level_db
                 run_case.nam_peak_db = nam_metrics.peak_db
                 run_case.nam_correlation = nam_metrics.correlation
-                analysis["nam_points"] = nam_metrics.analysis["points"]
-                analysis["nam_diagnostics"] = nam_diagnostics
             run_case.analysis = analysis
             run_case.scored_at = now_utc()
             session.add(
@@ -214,6 +250,100 @@ class ScoringService:
                 )
             )
         await self.finalize_if_ready(run_id)
+        finished_at = time.perf_counter()
+        LOGGER.info(
+            "score.completed run_id=%s case_id=%s queue_wait_ms=%.1f load_ms=%.1f "
+            "storage_ms=%.1f candidate_ms=%.1f baseline_ms=%.1f baseline_cache=%s "
+            "db_finalize_ms=%.1f total_ms=%.1f queue_depth=%d",
+            run_id,
+            benchmark_case_id,
+            queue_wait_ms,
+            (loaded_at - started_at) * 1_000,
+            (storage_loaded_at - loaded_at) * 1_000,
+            (candidate_scored_at - storage_loaded_at) * 1_000,
+            (baseline_scored_at - candidate_scored_at) * 1_000,
+            baseline_cache,
+            (finished_at - baseline_scored_at) * 1_000,
+            (finished_at - started_at) * 1_000,
+            self.queue_depth,
+        )
+
+    async def _nam_result(
+        self,
+        benchmark_case_id: str,
+        *,
+        expected_signature: str,
+        reference_bytes: bytes,
+    ) -> tuple[AudioMetrics | None, str]:
+        lock = self._baseline_locks.setdefault(benchmark_case_id, asyncio.Lock())
+        async with lock:
+            async with self._database.session() as session:
+                benchmark_case = await session.get(BenchmarkCase, benchmark_case_id)
+                if benchmark_case is None or benchmark_case.nam_reference_wet_key is None:
+                    return None, "unavailable"
+                current_signature = baseline_cache_signature(benchmark_case)
+                cached = self._cached_nam_result(benchmark_case, current_signature)
+                if cached is not None:
+                    return cached, "hit"
+                nam_reference_key = benchmark_case.nam_reference_wet_key
+                reference_latency_samples = benchmark_case.reference_latency_samples
+                reference_key = benchmark_case.reference_wet_key
+
+            if current_signature != expected_signature:
+                reference_bytes = await self._storage.get(reference_key)
+            nam_reference_bytes = await self._storage.get(nam_reference_key)
+            metrics = await asyncio.to_thread(
+                self._metrics_from_audio,
+                reference_bytes,
+                nam_reference_bytes,
+                reference_latency_samples=reference_latency_samples,
+            )
+            async with self._database.session() as session:
+                benchmark_case = await session.get(BenchmarkCase, benchmark_case_id)
+                if (
+                    benchmark_case is not None
+                    and baseline_cache_signature(benchmark_case) == current_signature
+                ):
+                    benchmark_case.nam_metrics_cache = self._serialize_metrics(metrics)
+                    benchmark_case.nam_cache_signature = current_signature
+            return metrics, "miss"
+
+    @staticmethod
+    def _serialize_metrics(metrics: AudioMetrics) -> dict[str, Any]:
+        return {
+            "esr": metrics.esr,
+            "human_weighted_esr": metrics.human_weighted_esr,
+            "mrstft": metrics.mrstft,
+            "level_db": metrics.level_db,
+            "peak_db": metrics.peak_db,
+            "correlation": metrics.correlation,
+            "analysis": metrics.analysis,
+        }
+
+    @staticmethod
+    def _cached_nam_result(
+        benchmark_case: BenchmarkCase,
+        signature: str,
+    ) -> AudioMetrics | None:
+        if benchmark_case.nam_cache_signature != signature:
+            return None
+        values = benchmark_case.nam_metrics_cache
+        analysis = values.get("analysis")
+        if not isinstance(analysis, dict):
+            return None
+        try:
+            metrics = AudioMetrics(
+                esr=float(values["esr"]),
+                human_weighted_esr=float(values["human_weighted_esr"]),
+                mrstft=float(values["mrstft"]),
+                level_db=float(values["level_db"]),
+                peak_db=float(values["peak_db"]),
+                correlation=float(values["correlation"]),
+                analysis=cast("CaseAnalysis", analysis),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        return metrics
 
     @staticmethod
     def _metrics_from_audio(
@@ -304,8 +434,20 @@ class ScoringService:
         )
 
     async def _finalize_if_ready(self, run: BenchmarkRun, session: AsyncSession) -> bool:
-        if run.status in {"completed", "failed"}:
-            return run.status == "completed"
+        if run.status == "completed":
+            return True
+        completed_cases = int(
+            await session.scalar(
+                select(func.count(RunCase.id)).where(
+                    RunCase.run_id == run.id,
+                    RunCase.status == "completed",
+                )
+            )
+            or 0
+        )
+        run.completed_cases = completed_cases
+        if run.status == "failed":
+            return False
         failed_cases = int(
             await session.scalar(
                 select(func.count(RunCase.id)).where(
@@ -318,6 +460,11 @@ class ScoringService:
         if failed_cases:
             run.status = "failed"
             return False
+        if not run.client_finished:
+            return False
+        if completed_cases != run.total_cases:
+            run.status = "finalizing"
+            return False
         rows = (
             await session.scalars(
                 select(RunCase)
@@ -325,12 +472,6 @@ class ScoringService:
                 .where(RunCase.run_id == run.id, RunCase.status == "completed")
             )
         ).all()
-        run.completed_cases = len(rows)
-        if not run.client_finished:
-            return False
-        if len(rows) != run.total_cases:
-            run.status = "finalizing"
-            return False
         run.metrics = aggregate_metrics(rows)
         run.status = "completed"
         run.completed_at = now_utc()

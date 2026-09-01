@@ -82,6 +82,8 @@ class BenchmarkCase(Base):
     reference_wet_key: Mapped[str] = mapped_column(String(1024))
     reference_latency_samples: Mapped[int] = mapped_column(Integer, default=0)
     nam_reference_wet_key: Mapped[str | None] = mapped_column(String(1024))
+    nam_metrics_cache: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    nam_cache_signature: Mapped[str | None] = mapped_column(String(64))
     duration_seconds: Mapped[float] = mapped_column(Float)
     sample_rate: Mapped[int] = mapped_column(Integer, default=48_000)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

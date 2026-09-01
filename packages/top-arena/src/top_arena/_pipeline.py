@@ -110,6 +110,7 @@ class BenchmarkRun:
             reporter.finish(result)
             return result  # noqa: TRY300
         except Exception as error:
+            LOGGER.exception("benchmark client pipeline failed run_id=%s", run_id)
             reporter.fail(error)
             if completion_task is not None and not completion_task.done():
                 completion_task.cancel()
@@ -133,7 +134,10 @@ class BenchmarkRun:
                 await self._gateway.emit_event(
                     run_id,
                     "run.client_failed",
-                    payload={"error": str(error)},
+                    payload={
+                        "error": _failure_summary(error),
+                        "details": _failure_details(error),
+                    },
                 )
             except Exception as notification_error:
                 if attempt == 2:
@@ -351,6 +355,32 @@ class BenchmarkRun:
         if case_count == 0:
             return 0.0
         return self._metadata.audio_duration_sum / case_count
+
+
+def _failure_details(error: BaseException) -> dict[str, object]:
+    details: dict[str, object] = {
+        "type": type(error).__name__,
+        "message": str(error),
+    }
+    if isinstance(error, BaseExceptionGroup):
+        details["exceptions"] = [_failure_details(child) for child in error.exceptions]
+    return details
+
+
+def _failure_summary(error: BaseException) -> str:
+    if not isinstance(error, BaseExceptionGroup):
+        return f"{type(error).__name__}: {error}"
+    leaves: list[str] = []
+
+    def collect(current: BaseException) -> None:
+        if isinstance(current, BaseExceptionGroup):
+            for child in current.exceptions:
+                collect(child)
+        else:
+            leaves.append(f"{type(current).__name__}: {current}")
+
+    collect(error)
+    return "; ".join(leaves) or f"{type(error).__name__}: {error}"
 
 
 async def _close_queue_after[T](

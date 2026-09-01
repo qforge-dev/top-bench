@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import defer, joinedload, selectinload
+from starlette.middleware.base import RequestResponseEndpoint
 
 from .config import Settings
 from .database import Database
@@ -26,6 +28,8 @@ from .schemas import (
     CaseResultResponse,
     CreateRunRequest,
     CreateRunResponse,
+    EventBatchRequest,
+    EventBatchResponse,
     EventRequest,
     EventResponse,
     EventsResponse,
@@ -44,7 +48,7 @@ from .schemas import (
     WaveformResponse,
     WaveformSeriesResponse,
 )
-from .scoring import ScoringService
+from .scoring import ScoringService, baseline_cache_signature
 from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
 
@@ -512,6 +516,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary="Open audio-model benchmark and leaderboard",
         lifespan=lifespan,
     )
+    upload_slots = asyncio.Semaphore(max(1, selected_settings.upload_concurrency_limit))
+
+    @app.middleware("http")
+    async def log_slow_requests(
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        started_at = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = (time.perf_counter() - started_at) * 1_000
+            LOGGER.exception(
+                "request.failed method=%s path=%s duration_ms=%.1f",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+            raise
+        elapsed_seconds = time.perf_counter() - started_at
+        if response.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+            LOGGER.error(
+                "request.server_error method=%s path=%s status=%d duration_ms=%.1f",
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed_seconds * 1_000,
+            )
+        elif elapsed_seconds >= selected_settings.slow_request_log_seconds:
+            LOGGER.warning(
+                "request.slow method=%s path=%s status=%d duration_ms=%.1f",
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed_seconds * 1_000,
+            )
+        return response
+
     package_root = Path(__file__).parent
     static_root = package_root / "static"
     template_root = package_root / "templates"
@@ -521,8 +563,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=template_root)
 
     @app.get("/health", tags=["system"])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health() -> dict[str, str | int]:
+        return {
+            "status": "ok",
+            "score_queue_depth": services.scoring.queue_depth,
+            "score_workers": services.scoring.worker_count,
+        }
 
     @app.get("/api/v1/amps", response_model=list[AmpResponse], tags=["benchmark"])
     async def amps() -> list[AmpResponse]:
@@ -582,6 +628,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["runs"],
     )
     async def create_run(request: CreateRunRequest) -> CreateRunResponse:
+        started_at = time.perf_counter()
         try:
             async with database.session() as session:
                 amp = await session.get(Amp, request.amp_id)
@@ -623,6 +670,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
         except IntegrityError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, "run name already exists") from error
+        LOGGER.info(
+            "run.created run_id=%s amp_id=%s cases=%d duration_ms=%.1f",
+            response.id,
+            request.amp_id,
+            response.total_cases,
+            (time.perf_counter() - started_at) * 1_000,
+        )
         return response
 
     @app.post(
@@ -646,6 +700,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             session.add(event)
             await session.flush()
+            if request.kind == "run.client_failed":
+                LOGGER.error(
+                    "run.client_failed run_id=%s error=%s details=%r",
+                    run_id,
+                    request.payload.get("error"),
+                    request.payload.get("details"),
+                )
             return EventResponse(
                 id=event.id,
                 kind=event.kind,
@@ -653,6 +714,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload=event.payload,
                 occurred_at=event.occurred_at,
             )
+
+    @app.post(
+        "/api/v1/runs/{run_id}/events/batch",
+        response_model=EventBatchResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["events"],
+    )
+    async def add_event_batch(
+        run_id: str,
+        request: EventBatchRequest,
+    ) -> EventBatchResponse:
+        client_failure = next(
+            (event for event in request.events if event.kind == "run.client_failed"),
+            None,
+        )
+        async with database.session() as session:
+            run = await session.get(BenchmarkRun, run_id)
+            if run is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+            if client_failure is not None and run.status not in {
+                "completed",
+                "failed",
+            }:
+                run.status = "failed"
+            session.add_all(
+                [
+                    RunEvent(
+                        run_id=run_id,
+                        benchmark_case_id=event.case_id,
+                        kind=event.kind,
+                        payload=event.payload,
+                    )
+                    for event in request.events
+                ]
+            )
+        if client_failure is not None:
+            LOGGER.error(
+                "run.client_failed run_id=%s error=%s details=%r",
+                run_id,
+                client_failure.payload.get("error"),
+                client_failure.payload.get("details"),
+            )
+        return EventBatchResponse(accepted=len(request.events))
 
     @app.put(
         "/api/v1/runs/{run_id}/cases/{case_id}/audio",
@@ -665,30 +769,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         realtime_x: Annotated[float, Query()],
     ) -> dict[str, str]:
+        started_at = time.perf_counter()
         request_media_type = request.headers.get("content-type", "").partition(";")[0].lower()
         is_flac = request_media_type in {"application/flac", "audio/flac", "audio/x-flac"}
         extension = ".flac" if is_flac else ".wav"
         media_type = "audio/flac" if is_flac else "audio/wav"
         candidate_key = f"runs/{run_id}/candidates/{case_id}{extension}"
         async with database.session() as session:
-            run = await session.get(BenchmarkRun, run_id)
-            if run is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
-            if run.client_finished or run.status in {"completed", "failed"}:
-                raise HTTPException(status.HTTP_409_CONFLICT, "run no longer accepts uploads")
-            run_case = await session.scalar(
-                select(RunCase).where(
-                    RunCase.run_id == run_id,
-                    RunCase.benchmark_case_id == case_id,
+            row = (
+                await session.execute(
+                    select(RunCase, BenchmarkRun.client_finished, BenchmarkRun.status)
+                    .join(BenchmarkRun, BenchmarkRun.id == RunCase.run_id)
+                    .where(
+                        RunCase.run_id == run_id,
+                        RunCase.benchmark_case_id == case_id,
+                    )
                 )
-            )
-            if run_case is None:
+            ).one_or_none()
+            if row is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "run case not found")
+            run_case, client_finished, run_status = row
+            if (
+                run_case.candidate_wet_key == candidate_key
+                and run_case.status
+                in {
+                    "uploaded",
+                    "scoring",
+                    "completed",
+                }
+                and run_case.realtime_x == realtime_x
+            ):
+                return {"status": "accepted"}
+            if client_finished or run_status in {"completed", "failed"}:
+                raise HTTPException(status.HTTP_409_CONFLICT, "run no longer accepts uploads")
             if run_case.status in {"scoring", "completed", "failed"}:
                 raise HTTPException(status.HTTP_409_CONFLICT, "run case no longer accepts uploads")
             run_case_id = run_case.id
-        value = await request.body()
-        await storage.put(candidate_key, value, content_type=media_type)
+        validated_at = time.perf_counter()
+        slot_requested_at = validated_at
+        async with upload_slots:
+            slot_acquired_at = time.perf_counter()
+            value = await request.body()
+            body_read_at = time.perf_counter()
+            await storage.put(candidate_key, value, content_type=media_type)
+            stored_at = time.perf_counter()
         async with database.session() as session:
             run_case = await session.get(RunCase, run_case_id)
             if run_case is None:
@@ -710,6 +834,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
         await services.scoring.enqueue(run_case_id)
+        finished_at = time.perf_counter()
+        LOGGER.info(
+            "upload.accepted run_id=%s case_id=%s bytes=%d validate_ms=%.1f "
+            "slot_wait_ms=%.1f read_ms=%.1f storage_ms=%.1f db_queue_ms=%.1f "
+            "total_ms=%.1f score_queue_depth=%d",
+            run_id,
+            case_id,
+            len(value),
+            (validated_at - started_at) * 1_000,
+            (slot_acquired_at - slot_requested_at) * 1_000,
+            (body_read_at - slot_acquired_at) * 1_000,
+            (stored_at - body_read_at) * 1_000,
+            (finished_at - stored_at) * 1_000,
+            (finished_at - started_at) * 1_000,
+            services.scoring.queue_depth,
+        )
         return {"status": "accepted"}
 
     @app.post("/api/v1/runs/{run_id}/finish", tags=["runs"])
@@ -849,6 +989,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if benchmark_case.nam_reference_wet_key is not None
             else None
         )
+        analysis = dict(run_case.analysis or {})
+        cached_nam_analysis = benchmark_case.nam_metrics_cache.get("analysis")
+        if (
+            "nam_points" not in analysis
+            and benchmark_case.nam_cache_signature == baseline_cache_signature(benchmark_case)
+            and isinstance(cached_nam_analysis, dict)
+            and isinstance((nam_points := cached_nam_analysis.get("points")), list)
+        ):
+            analysis["nam_points"] = nam_points
         return RunCaseDetailResponse(
             run=_run_response(run, include_cases=False),
             case_id=case_id,
@@ -876,7 +1025,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 nam_peak_db=run_case.nam_peak_db,
                 nam_correlation=run_case.nam_correlation,
             ),
-            analysis=RunCaseAnalysisResponse.model_validate(run_case.analysis or {}),
+            analysis=RunCaseAnalysisResponse.model_validate(analysis),
             audio=RunCaseAudioResponse(
                 dry=_case_audio_url(run_id, case_id, "dry"),
                 reference=_case_audio_url(run_id, case_id, "reference"),
