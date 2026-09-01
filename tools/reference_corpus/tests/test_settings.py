@@ -7,6 +7,7 @@ import numpy as np
 from tools.reference_corpus.settings import (
     _build_positions,
     _derive_fixed_amp,
+    _derive_output_calibrated_amp,
     _maximin_latin_hypercube,
 )
 
@@ -87,3 +88,36 @@ def test_derived_amp_preserves_blackface_distribution_and_fixes_bright_and_maste
         [0.75, 0.5, 0.0],
         [0.2, 0.5, 0.0],
     ]
+
+
+def test_quiet_amp_reuses_simple_positions_and_records_output_calibration() -> None:
+    simple = {
+        "amp_id": "blackface63-simple",
+        "amp_index": 53,
+        "amp_name": "blackface63-simple",
+        "renderer_amp_id": "blackface-source-id",
+        "fixed_controls": {"Bright": 0.0, "Master": 0.5},
+        "positions": [
+            {
+                "position_id": "position-01",
+                "values": {"Volume": 0.75, "Master": 0.5, "Bright": 0.0},
+                "vector": [0.75, 0.5, 0.0],
+            }
+        ],
+    }
+
+    quiet = _derive_output_calibrated_amp(
+        simple,
+        amp_id="blackface63-simple-quiet",
+        amp_name="blackface63-simple-quiet",
+        amp_index=54,
+        output_db=-5.7,
+        output_raw=0.705,
+    )
+
+    assert quiet["amp_id"] == "blackface63-simple-quiet"
+    assert quiet["renderer_amp_id"] == "blackface-source-id"
+    assert quiet["renderer_output_db"] == -5.7
+    assert quiet["renderer_output_raw"] == 0.705
+    assert quiet["positions"] == simple["positions"]
+    assert quiet["positions"] is not simple["positions"]

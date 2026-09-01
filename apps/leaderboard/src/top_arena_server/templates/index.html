@@ -147,7 +147,7 @@
             <span>Amp</span>
             <select id="amp-filter">
               <option value="">All amps</option>
-              {% for amp in amps|default([], true) if selected_scope == "all" or (selected_scope == "simple") == (amp.id == "blackface63-simple") %}
+              {% for amp in amps|default([], true) if selected_scope == "all" or (selected_scope == "simple") == (amp.id in simple_amp_ids) %}
                 <option value="{{ amp.id }}"{% if amp.id == table_state.amp_id|default("") %} selected{% endif %}>{{ amp.name }}</option>
               {% endfor %}
             </select>

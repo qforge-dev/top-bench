@@ -13,6 +13,7 @@ from .process import s3_upload, sha256, write_json
 
 BLACKFACE_63_AMP_ID = "D3D21964-8E80-11EE-B9D1-0242AC120002"
 BLACKFACE_63_SIMPLE_AMP_ID = "blackface63-simple"
+BLACKFACE_63_SIMPLE_QUIET_AMP_ID = "blackface63-simple-quiet"
 
 
 def _amp_seed(base_seed: int, amp_id: str) -> int:
@@ -140,6 +141,28 @@ def _derive_fixed_amp(
     return derived
 
 
+def _derive_output_calibrated_amp(
+    source: dict[str, Any],
+    *,
+    amp_id: str,
+    amp_name: str,
+    amp_index: int,
+    output_db: float,
+    output_raw: float,
+) -> dict[str, Any]:
+    derived = copy.deepcopy(source)
+    derived.update(
+        {
+            "amp_id": amp_id,
+            "amp_index": amp_index,
+            "amp_name": amp_name,
+            "renderer_output_db": float(output_db),
+            "renderer_output_raw": float(output_raw),
+        }
+    )
+    return derived
+
+
 def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
     report = json.loads(config.amp_report.read_text())
     old_plan = json.loads(config.old_capture_plan.read_text())
@@ -175,13 +198,25 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
             }
         )
     blackface = next(amp for amp in amps if amp["amp_id"] == BLACKFACE_63_AMP_ID)
-    amps.append(
-        _derive_fixed_amp(
-            blackface,
-            amp_id=BLACKFACE_63_SIMPLE_AMP_ID,
-            amp_name=BLACKFACE_63_SIMPLE_AMP_ID,
-            amp_index=max(int(amp["amp_index"]) for amp in amps) + 1,
-            fixed_controls={"Bright": 0.0, "Master": 0.5},
+    next_amp_index = max(int(amp["amp_index"]) for amp in amps) + 1
+    simple = _derive_fixed_amp(
+        blackface,
+        amp_id=BLACKFACE_63_SIMPLE_AMP_ID,
+        amp_name=BLACKFACE_63_SIMPLE_AMP_ID,
+        amp_index=next_amp_index,
+        fixed_controls={"Bright": 0.0, "Master": 0.5},
+    )
+    amps.extend(
+        (
+            simple,
+            _derive_output_calibrated_amp(
+                simple,
+                amp_id=BLACKFACE_63_SIMPLE_QUIET_AMP_ID,
+                amp_name=BLACKFACE_63_SIMPLE_QUIET_AMP_ID,
+                amp_index=next_amp_index + 1,
+                output_db=-5.7,
+                output_raw=0.705,
+            ),
         )
     )
     amps.sort(key=lambda row: int(row["amp_index"]))

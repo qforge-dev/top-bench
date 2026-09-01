@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import httpx
-from top_arena_server.app import create_app
+from top_arena_server.app import SIMPLE_AMP_IDS, create_app
 from top_arena_server.config import Settings
 from top_arena_server.models import Amp, BenchmarkRun
 
@@ -37,6 +37,10 @@ def _run(index: int, *, amp_id: str, creator: str) -> BenchmarkRun:
             "diagnostics": {"large_unused_value": "x" * 100_000},
         },
     )
+
+
+def test_simple_amp_set_includes_quiet_training_level_variant() -> None:
+    assert {"blackface63-simple", "blackface63-simple-quiet"} == SIMPLE_AMP_IDS
 
 
 async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -> None:

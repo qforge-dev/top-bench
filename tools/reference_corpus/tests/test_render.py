@@ -1,7 +1,21 @@
 from __future__ import annotations
 
 from tools.reference_corpus.config import CorpusConfig
-from tools.reference_corpus.render import _chain_for_amp, _upload_render
+from tools.reference_corpus.render import (
+    _chain_for_amp,
+    _set_renderer_output_level,
+    _upload_render,
+)
+
+
+class _Parameter:
+    def __init__(self) -> None:
+        self.raw_value = 0.0
+
+
+class _Plugin:
+    def __init__(self) -> None:
+        self.parameters = {"master_output_level": _Parameter()}
 
 
 def test_chain_uses_control_indices_and_selected_values() -> None:
@@ -38,6 +52,30 @@ def test_derived_amp_chain_uses_the_source_renderer_amp_id() -> None:
 
     module = next(item for item in chain["sigPath"] if item.get("dspId") == "BiasOneAmp")
     assert module["ampId"] == "BLACKFACE-BIAS-X-ID"
+
+
+def test_quiet_amp_sets_the_bias_x_output_to_minus_5_7_db() -> None:
+    plugin = _Plugin()
+
+    _set_renderer_output_level(
+        plugin,
+        {
+            "amp_id": "blackface63-simple-quiet",
+            "renderer_output_db": -5.7,
+            "renderer_output_raw": 0.705,
+        },
+    )
+
+    assert plugin.parameters["master_output_level"].raw_value == 0.705
+
+
+def test_normal_amp_restores_the_bias_x_output_to_zero_db() -> None:
+    plugin = _Plugin()
+    plugin.parameters["master_output_level"].raw_value = 0.705
+
+    _set_renderer_output_level(plugin, {"amp_id": "normal-amp"})
+
+    assert plugin.parameters["master_output_level"].raw_value == 0.8
 
 
 def test_upload_removes_staging_only_after_success(tmp_path, monkeypatch) -> None:

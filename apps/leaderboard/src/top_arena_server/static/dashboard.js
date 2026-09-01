@@ -6,7 +6,7 @@
   const SEARCH_DEBOUNCE_MS = 250;
   const PAGE_SIZE = 25;
   const DEFAULT_AMP_SCOPE = "normal";
-  const SIMPLE_AMP_IDS = new Set(["blackface63-simple"]);
+  const SIMPLE_AMP_IDS = new Set(["blackface63-simple", "blackface63-simple-quiet"]);
   const SORT_KEYS = new Set([
     "rank",
     "name",

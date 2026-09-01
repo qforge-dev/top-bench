@@ -10,7 +10,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import soundfile as sf
@@ -21,6 +21,15 @@ from .process import s3_exists, s3_upload, sha256, write_json
 from .settings import resolve_amps
 
 LOGGER = logging.getLogger(__name__)
+DEFAULT_RENDERER_OUTPUT_RAW = 0.8
+
+
+class _Parameter(Protocol):
+    raw_value: float
+
+
+class _Plugin(Protocol):
+    parameters: dict[str, _Parameter]
 
 
 def _load_mapper(config: CorpusConfig) -> ModuleType:
@@ -49,6 +58,24 @@ def _chain_for_amp(
     chain["name"] = f"{amp['amp_name']} {position['position_id']}"
     chain["description"] = "TOP Arena reference-corpus render"
     return chain
+
+
+def _set_renderer_output_level(plugin: _Plugin, amp: dict[str, Any]) -> None:
+    output = plugin.parameters.get("master_output_level")
+    if output is None:
+        msg = "BIAS X does not expose its master output level"
+        raise RuntimeError(msg)
+    raw_value = float(amp.get("renderer_output_raw", DEFAULT_RENDERER_OUTPUT_RAW))
+    if not 0.0 <= raw_value <= 1.0:
+        msg = f"invalid BIAS X output value for {amp['amp_id']}: {raw_value}"
+        raise ValueError(msg)
+    output.raw_value = raw_value
+    LOGGER.info(
+        "%s BIAS X output calibrated to %+.1f dB (raw %.6f)",
+        amp["amp_id"],
+        float(amp.get("renderer_output_db", 0.0)),
+        raw_value,
+    )
 
 
 class RenderState:
@@ -213,6 +240,7 @@ def render(
 
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="s3-upload") as uploads:
         for amp in amps:
+            _set_renderer_output_level(plugin, amp)
             for position in list(amp["positions"])[:position_limit]:
                 chain = _chain_for_amp(config, amp, position)
                 chain_path = staging / "active-chain.json"

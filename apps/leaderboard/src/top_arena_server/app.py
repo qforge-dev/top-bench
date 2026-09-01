@@ -53,7 +53,7 @@ from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
 
 LOGGER = logging.getLogger(__name__)
-SIMPLE_AMP_IDS = frozenset({"blackface63-simple"})
+SIMPLE_AMP_IDS = frozenset({"blackface63-simple", "blackface63-simple-quiet"})
 LEADERBOARD_PAGE_SIZE = 25
 
 
@@ -1302,6 +1302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "amps": serialized["amps"],
                 "leaderboard": serialized,
                 "creators": serialized["creators"],
+                "simple_amp_ids": SIMPLE_AMP_IDS,
                 "table_state": {
                     "amp_scope": amp_scope,
                     "amp_id": amp_id or "",
