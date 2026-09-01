@@ -500,14 +500,20 @@
   .amp-table-frame {
     width: 100%;
     max-width: 100%;
-    overflow: visible;
+    max-height: min(68dvh, 620px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .amp-model-table { min-width: 0; }
+  .amp-model-table { min-width: 1180px; }
 
-  .amp-run-select {
-    overflow-wrap: anywhere;
-    white-space: normal;
+  .amp-model-table th {
+    position: sticky;
+    z-index: 3;
+    top: 0;
+    background: #11171e;
   }
 
   .selected-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#0b0e13">
     <title>{{ amp.name }} results · Top Arena</title>
     <meta name="description" content="Compare every benchmarked model for {{ amp.name }}.">
-    <link rel="stylesheet" href="/static/styles.css?v=20260901-mobile-tables">
-    <link rel="stylesheet" href="/static/amp_detail.css?v=20260901-mobile-tables">
+    <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
+    <link rel="stylesheet" href="/static/amp_detail.css?v=20260901-scrollable-tables">
     <script defer src="/static/amp_detail.js?v=20260831-utc-dates"></script>
   </head>
   <body class="amp-page">
@@ -80,7 +80,7 @@
             <input id="amp-model-filter" type="search" placeholder="Find a model run" autocomplete="off">
           </label>
         </header>
-        <div class="amp-table-frame">
+        <div class="amp-table-frame" role="region" aria-label="Scrollable amp model table" tabindex="0">
           <table class="amp-model-table">
             <caption class="sr-only">All benchmarked models for {{ amp.name }}. Select a model to inspect its aggregate results.</caption>
             <thead>

@@ -1044,108 +1044,12 @@ footer {
   }
 
   .table-frame {
-    border: 0;
-    overflow: visible;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  table,
-  tbody,
-  tr,
-  td {
-    display: block;
-    width: 100%;
-    min-width: 0;
-  }
-
-  thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-  }
-
-  tbody {
-    display: grid;
-    gap: 14px;
-  }
-
-  tbody tr {
-    display: grid;
-    padding: 7px 15px;
-    border: 1px solid var(--line);
-    border-radius: 13px;
-    background: var(--panel);
-    box-shadow: 0 14px 38px rgb(0 0 0 / 15%);
-    grid-template-columns: 1fr 1fr;
-  }
-
-  tbody tr:hover {
-    background: var(--panel-raised);
-  }
-
-  td,
-  tbody tr:last-child td {
-    min-width: 0;
-    padding: 12px 5px;
-    border-bottom: 1px solid var(--line-soft);
-  }
-
-  td::before {
-    display: block;
-    margin-bottom: 7px;
-    color: var(--text-muted);
-    content: attr(data-label);
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-    font-size: 0.57rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .rank-cell,
-  .model-cell,
-  td:nth-last-child(-n + 3) {
-    grid-column: 1 / -1;
-  }
-
-  .rank-cell {
-    padding-bottom: 0;
-    border-bottom: 0;
-  }
-
-  .rank-cell::before {
-    display: inline;
-    margin-right: 6px;
-  }
-
-  .model-cell > p {
-    max-width: none;
-  }
-
-  .metric-summary {
-    min-width: 0;
-  }
-
-  .metric-details {
-    max-width: 300px;
-  }
-
-  .empty-row {
-    display: block;
-  }
-
-  .empty-row td {
-    display: grid;
-    height: 180px;
-    border: 0;
-    place-content: center;
-  }
-
-  .empty-row td::before {
-    display: none;
+    max-width: 100%;
+    max-height: min(68dvh, 620px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
   footer {
@@ -1326,40 +1230,7 @@ td {
     padding-top: 24px;
   }
 
-  table {
-    min-width: 0;
-  }
-
-  tbody tr {
-    gap: 0 12px;
-  }
-
   td {
     padding-block: 9px;
-  }
-
-  .model-cell > strong {
-    max-width: 100%;
-    white-space: normal;
-  }
-
-  .model-link {
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  .table-frame {
-    width: 100%;
-    max-width: 100%;
-    overflow: visible;
-  }
-
-  tbody tr {
-    max-width: 100%;
-  }
-
-  td {
-    min-width: 0;
-    max-width: 100%;
   }
 }

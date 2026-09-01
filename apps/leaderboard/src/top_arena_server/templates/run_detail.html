@@ -8,7 +8,7 @@
     {% set resolved_title = page_title|default(run_name|default("Run details", true), true) %}
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
-    <link rel="stylesheet" href="/static/styles.css?v=20260901-mobile-tables">
+    <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
     <link rel="stylesheet" href="/static/case_detail.css?v=20260831-live-details">
     <script defer src="/static/case_detail.js?v=20260831-utc-dates"></script>
   </head>
