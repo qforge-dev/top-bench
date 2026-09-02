@@ -38,6 +38,14 @@ jobs:
           submodules: recursive
           path: nam-core
 
+      - name: Remove upstream GCC-only source flag on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $path = "nam-core/tools/CMakeLists.txt"
+          $content = Get-Content $path -Raw
+          $content.Replace('PROPERTIES COMPILE_FLAGS "-Wno-error"', 'PROPERTIES COMPILE_FLAGS ""') | Set-Content $path
+
       - name: Configure release build
         run: cmake -S nam-core -B build -DCMAKE_BUILD_TYPE=Release
 
