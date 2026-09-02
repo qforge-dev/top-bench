@@ -40,7 +40,20 @@ def _run(index: int, *, amp_id: str, creator: str) -> BenchmarkRun:
 
 
 def test_simple_amp_set_includes_quiet_training_level_variant() -> None:
-    assert {"blackface63-simple", "blackface63-simple-quiet"} == SIMPLE_AMP_IDS
+    assert {
+        "blackface63-simple",
+        "blackface63-simple-quiet",
+        "genome-artisan-100-ch1-simple",
+        "genome-brit1959-ch1-simple",
+        "genome-calibro-normal-simple",
+        "genome-eldorado-syn-simple",
+        "genome-flatback-dual-ch3-simple",
+        "genome-fried-r50-dirty-simple",
+        "genome-hektor-lead-simple",
+        "genome-lyndon-lion-clean-simple",
+        "genome-petaluma-rockrider-clean-simple",
+        "genome-revelation-120-ch4-simple",
+    } == SIMPLE_AMP_IDS
 
 
 async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -> None:

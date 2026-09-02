@@ -6,7 +6,20 @@
   const SEARCH_DEBOUNCE_MS = 250;
   const PAGE_SIZE = 25;
   const DEFAULT_AMP_SCOPE = "normal";
-  const SIMPLE_AMP_IDS = new Set(["blackface63-simple", "blackface63-simple-quiet"]);
+  const SIMPLE_AMP_IDS = new Set([
+    "blackface63-simple",
+    "blackface63-simple-quiet",
+    "genome-artisan-100-ch1-simple",
+    "genome-brit1959-ch1-simple",
+    "genome-calibro-normal-simple",
+    "genome-eldorado-syn-simple",
+    "genome-flatback-dual-ch3-simple",
+    "genome-fried-r50-dirty-simple",
+    "genome-hektor-lead-simple",
+    "genome-lyndon-lion-clean-simple",
+    "genome-petaluma-rockrider-clean-simple",
+    "genome-revelation-120-ch4-simple",
+  ]);
   const SORT_KEYS = new Set([
     "rank",
     "name",

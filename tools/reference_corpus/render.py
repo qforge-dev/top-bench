@@ -18,7 +18,7 @@ import soundfile as sf
 from .audio import load_dry_manifest
 from .config import CorpusConfig
 from .process import s3_exists, s3_upload, sha256, write_json
-from .settings import resolve_amps
+from .settings import resolve_amps_for_renderer
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_RENDERER_OUTPUT_RAW = 0.8
@@ -207,7 +207,7 @@ def render(
 
     dry = load_dry_manifest(config)
     amp_manifest = json.loads((config.root / "manifests" / "amps.json").read_text())
-    amps = resolve_amps(amp_manifest, selectors)
+    amps = resolve_amps_for_renderer(amp_manifest, selectors, "bias-x")
     sounds = list(dry["sounds"])[:sound_limit]
     mapper = _load_mapper(config)
     plugin = load_plugin(str(config.plugin_path))

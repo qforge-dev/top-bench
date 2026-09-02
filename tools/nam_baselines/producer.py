@@ -13,7 +13,7 @@ import soundfile as sf
 
 from tools.reference_corpus.process import s3_upload, sha256, write_json
 from tools.reference_corpus.render import _chain_for_amp, _load_mapper
-from tools.reference_corpus.settings import resolve_amps
+from tools.reference_corpus.settings import resolve_amps_for_renderer
 
 from .config import NamBaselineConfig
 
@@ -134,7 +134,7 @@ def produce(
     from pedalboard import load_plugin  # noqa: PLC0415
 
     amp_manifest = json.loads((config.corpus.root / "manifests" / "amps.json").read_text())
-    amps = resolve_amps(amp_manifest, selectors)[:amp_limit]
+    amps = resolve_amps_for_renderer(amp_manifest, selectors, "bias-x")[:amp_limit]
     _, dry_sha256 = _prepare_dry(config)
     dry, rate = sf.read(config.corpus.reference, always_2d=True, dtype="float32")
     if rate != config.corpus.sample_rate or dry.shape[1] != 1:

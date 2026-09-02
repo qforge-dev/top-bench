@@ -14,6 +14,20 @@ from .process import s3_upload, sha256, write_json
 BLACKFACE_63_AMP_ID = "D3D21964-8E80-11EE-B9D1-0242AC120002"
 BLACKFACE_63_SIMPLE_AMP_ID = "blackface63-simple"
 BLACKFACE_63_SIMPLE_QUIET_AMP_ID = "blackface63-simple-quiet"
+GENOME_SIMPLE_MODELS = (
+    ("genome-artisan-100-ch1-simple", "Artisan 100 Ch1"),
+    ("genome-brit1959-ch1-simple", "Brit1959 Ch1"),
+    ("genome-calibro-normal-simple", "CaliBro Normal Channel"),
+    ("genome-eldorado-syn-simple", "Eldorado Syn"),
+    ("genome-flatback-dual-ch3-simple", "FlatBack Dual Ch3"),
+    ("genome-fried-r50-dirty-simple", "Fried R50 Dirty"),
+    ("genome-hektor-lead-simple", "HEKTOR Lead"),
+    ("genome-lyndon-lion-clean-simple", "Lyndon Lion Clean"),
+    ("genome-petaluma-rockrider-clean-simple", "Petaluma Rockrider Clean"),
+    ("genome-revelation-120-ch4-simple", "Revelation 120 Ch4"),
+)
+GENOME_CONTROL_NAMES = ("Presence", "Master", "Treble", "Middle", "Bass", "Gain")
+GENOME_OUTPUT_GAINS = {"genome-hektor-lead-simple": 0.04}
 
 
 def _amp_seed(base_seed: int, amp_id: str) -> int:
@@ -163,6 +177,47 @@ def _derive_output_calibrated_amp(
     return derived
 
 
+def _build_genome_amps(
+    *, first_amp_index: int, position_count: int, seed: int
+) -> list[dict[str, Any]]:
+    controls = [
+        {
+            "index": index,
+            "name": name,
+            "kind": "knob",
+            "sampling": "uniform_0_1",
+        }
+        for index, name in enumerate(GENOME_CONTROL_NAMES)
+    ]
+    amps: list[dict[str, Any]] = []
+    for offset, (amp_id, model_name) in enumerate(GENOME_SIMPLE_MODELS):
+        sampling_source = {
+            "controls": list(GENOME_CONTROL_NAMES),
+            "settings": {"default": {"values": [0.5] * len(GENOME_CONTROL_NAMES)}},
+        }
+        amps.append(
+            {
+                "amp_index": first_amp_index + offset,
+                "amp_id": amp_id,
+                "amp_name": amp_id,
+                "series": "Genome PARADEX",
+                "category": "simple",
+                "hidden": False,
+                "reference_renderer": "genome-paradex",
+                "renderer_model": model_name,
+                "reference_output_gain": GENOME_OUTPUT_GAINS.get(amp_id, 0.9),
+                "controls": copy.deepcopy(controls),
+                "positions": _build_positions(
+                    sampling_source,
+                    controls,
+                    position_count,
+                    _amp_seed(seed, amp_id),
+                ),
+            }
+        )
+    return amps
+
+
 def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
     report = json.loads(config.amp_report.read_text())
     old_plan = json.loads(config.old_capture_plan.read_text())
@@ -188,6 +243,7 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
                 "series": amp["series"],
                 "category": amp["category"],
                 "hidden": bool(amp["hidden"]),
+                "reference_renderer": "bias-x",
                 "controls": controls,
                 "positions": _build_positions(
                     amp,
@@ -219,10 +275,17 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
             ),
         )
     )
+    amps.extend(
+        _build_genome_amps(
+            first_amp_index=next_amp_index + 2,
+            position_count=config.position_count,
+            seed=config.seed,
+        )
+    )
     amps.sort(key=lambda row: int(row["amp_index"]))
     manifest_path = config.root / "manifests" / "amps.json"
     manifest = {
-        "format": "top-arena.bias-x-position-plan.v1",
+        "format": "top-arena.reference-position-plan.v2",
         "seed": config.seed,
         "method": "256-candidate maximin Latin hypercube over [0.05, 0.95] plus factory default",
         "time_effects": "fixed at zero",
@@ -265,3 +328,23 @@ def resolve_amps(manifest: dict[str, Any], selectors: list[str]) -> list[dict[st
         msg = f"unknown amp selector(s): {', '.join(missing)}"
         raise ValueError(msg)
     return result
+
+
+def resolve_amps_for_renderer(
+    manifest: dict[str, Any], selectors: list[str], renderer: str
+) -> list[dict[str, Any]]:
+    if selectors == ["all"]:
+        return [
+            amp
+            for amp in manifest["amps"]
+            if str(amp.get("reference_renderer", "bias-x")) == renderer
+        ]
+    amps = resolve_amps(manifest, selectors)
+    wrong = [amp for amp in amps if str(amp.get("reference_renderer", "bias-x")) != renderer]
+    if wrong:
+        details = ", ".join(
+            f"{amp['amp_id']} ({amp.get('reference_renderer', 'bias-x')})" for amp in wrong
+        )
+        msg = f"renderer {renderer} cannot render: {details}"
+        raise ValueError(msg)
+    return amps

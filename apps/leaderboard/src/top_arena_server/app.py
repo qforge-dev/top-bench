@@ -53,7 +53,22 @@ from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
 
 LOGGER = logging.getLogger(__name__)
-SIMPLE_AMP_IDS = frozenset({"blackface63-simple", "blackface63-simple-quiet"})
+SIMPLE_AMP_IDS = frozenset(
+    {
+        "blackface63-simple",
+        "blackface63-simple-quiet",
+        "genome-artisan-100-ch1-simple",
+        "genome-brit1959-ch1-simple",
+        "genome-calibro-normal-simple",
+        "genome-eldorado-syn-simple",
+        "genome-flatback-dual-ch3-simple",
+        "genome-fried-r50-dirty-simple",
+        "genome-hektor-lead-simple",
+        "genome-lyndon-lion-clean-simple",
+        "genome-petaluma-rockrider-clean-simple",
+        "genome-revelation-120-ch4-simple",
+    }
+)
 LEADERBOARD_PAGE_SIZE = 25
 
 

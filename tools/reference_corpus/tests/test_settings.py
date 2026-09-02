@@ -5,10 +5,12 @@ from typing import Any
 import numpy as np
 
 from tools.reference_corpus.settings import (
+    _build_genome_amps,
     _build_positions,
     _derive_fixed_amp,
     _derive_output_calibrated_amp,
     _maximin_latin_hypercube,
+    resolve_amps_for_renderer,
 )
 
 
@@ -121,3 +123,52 @@ def test_quiet_amp_reuses_simple_positions_and_records_output_calibration() -> N
     assert quiet["renderer_output_raw"] == 0.705
     assert quiet["positions"] == simple["positions"]
     assert quiet["positions"] is not simple["positions"]
+
+
+def test_genome_catalog_builds_ten_six_control_simple_amps() -> None:
+    amps = _build_genome_amps(first_amp_index=55, position_count=10, seed=630_048)
+
+    assert len(amps) == 10
+    assert len({amp["amp_id"] for amp in amps}) == 10
+    assert {amp["reference_renderer"] for amp in amps} == {"genome-paradex"}
+    gains = {amp["amp_id"]: amp["reference_output_gain"] for amp in amps}
+    assert gains["genome-hektor-lead-simple"] == 0.04
+    assert {gain for amp_id, gain in gains.items() if amp_id != "genome-hektor-lead-simple"} == {
+        0.9
+    }
+    assert [control["name"] for control in amps[0]["controls"]] == [
+        "Presence",
+        "Master",
+        "Treble",
+        "Middle",
+        "Bass",
+        "Gain",
+    ]
+    for amp in amps:
+        assert len(amp["positions"]) == 10
+        assert amp["positions"][0]["kind"] == "factory_default"
+        assert amp["positions"][0]["vector"] == [0.5] * 6
+        for control_index in range(6):
+            values = [position["vector"][control_index] for position in amp["positions"]]
+            assert min(values) >= 0.05
+            assert max(values) <= 0.95
+
+
+def test_renderer_selection_filters_all_and_rejects_explicit_wrong_renderer() -> None:
+    manifest = {
+        "amps": [
+            {"amp_id": "bias", "amp_name": "Bias", "amp_index": 1, "reference_renderer": "bias-x"},
+            {
+                "amp_id": "genome",
+                "amp_name": "Genome",
+                "amp_index": 2,
+                "reference_renderer": "genome-paradex",
+            },
+        ]
+    }
+
+    assert [amp["amp_id"] for amp in resolve_amps_for_renderer(manifest, ["all"], "bias-x")] == [
+        "bias"
+    ]
+    with np.testing.assert_raises_regex(ValueError, "genome-paradex"):
+        resolve_amps_for_renderer(manifest, ["genome"], "bias-x")
