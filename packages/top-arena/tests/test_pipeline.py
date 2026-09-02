@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,8 @@ from top_arena._models import (
     BenchmarkCase,
     BenchmarkMetadata,
     BenchmarkResult,
+    NamA2CalibrationAssets,
+    NamA2SpeedCalibration,
     PipelineOptions,
     RunSnapshot,
 )
@@ -107,6 +110,41 @@ class FakeGateway(BenchmarkGateway):
         )
 
 
+@dataclass
+class FakeCalibrationGateway(FakeGateway):
+    runner_bytes: bytes = b"native runner"
+    model_bytes: bytes = b"native model"
+    calibration_downloads: list[str] = field(default_factory=list)
+    calibrations: list[NamA2SpeedCalibration | None] = field(default_factory=list)
+
+    async def get_nam_a2_calibration_assets(
+        self,
+        platform: str,
+    ) -> NamA2CalibrationAssets:
+        return NamA2CalibrationAssets(
+            version="native-v1",
+            platform=platform,
+            runner_url="https://assets.test/runner",
+            runner_sha256=hashlib.sha256(self.runner_bytes).hexdigest(),
+            model_url="https://assets.test/model",
+            model_sha256=hashlib.sha256(self.model_bytes).hexdigest(),
+            audio_seconds=2.0,
+        )
+
+    async def download_calibration_asset(self, url: str, destination: Path) -> None:
+        self.calibration_downloads.append(url)
+        destination.write_bytes(self.runner_bytes if url.endswith("runner") else self.model_bytes)
+
+    async def create_calibrated_run(
+        self,
+        metadata: BenchmarkMetadata,
+        amp_id: str,
+        calibration: NamA2SpeedCalibration | None,
+    ) -> str:
+        self.calibrations.append(calibration)
+        return await self.create_run(metadata, amp_id)
+
+
 async def test_pipeline_overlaps_download_inference_and_upload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -149,6 +187,52 @@ async def test_pipeline_overlaps_download_inference_and_upload(
     assert "download.started" in gateway.events
     assert "inference.completed" in gateway.events
     assert "upload.completed" in gateway.events
+
+
+async def test_native_nam_calibration_is_cached_across_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = BenchmarkCase("case-1", ((0.0,),), "dry/input.wav", "f" * 64)
+    gateway = FakeCalibrationGateway((case,))
+    measurements: list[float] = []
+
+    async def measure(_runner: Path, _model: Path) -> float:
+        value = (0.08, 0.1, 0.12)[len(measurements)]
+        measurements.append(value)
+        return value
+
+    monkeypatch.setattr("top_arena._pipeline._native_platform_name", lambda: "linux-x86_64")
+    monkeypatch.setattr("top_arena._pipeline._run_native_nam_benchmark", measure)
+    run = BenchmarkRun(
+        gateway=gateway,
+        metadata=BenchmarkMetadata(
+            name="calibrated-model",
+            creator="tests",
+            unique_positions_used=1,
+            audio_duration_sum=0.01,
+            turns=1,
+            training_time=1.0,
+            description="native calibration cache",
+            parameter_count=1,
+        ),
+        cache_dir=tmp_path / "cache",
+    )
+
+    def model(audio_path: Path, _positions: tuple[tuple[float, ...], ...]) -> Path:
+        wet = tmp_path / "wet.wav"
+        wet.write_bytes(audio_path.read_bytes())
+        return wet
+
+    await run.run_async("demo-amp", model)
+    await run.run_async("demo-amp", model)
+
+    assert measurements == [0.08, 0.1, 0.12]
+    assert len(gateway.calibration_downloads) == 2
+    assert len(gateway.calibrations) == 2
+    assert gateway.calibrations[0] is not None
+    assert gateway.calibrations[0].realtime_x == pytest.approx(20.0)
+    assert gateway.calibrations[1] == gateway.calibrations[0]
 
 
 async def test_pipeline_warms_model_with_random_case_without_uploading_it(

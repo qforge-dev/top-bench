@@ -79,6 +79,11 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                     "training_time": 12.0,
                     "description": "Lifecycle test",
                     "parameter_count": 40_000,
+                    "nam_a2_realtime_x": 10.0,
+                    "speed_calibration": {
+                        "version": "top-arena-native-nam-a2-speed-v1",
+                        "platform": "linux-x86_64",
+                    },
                 },
             )
             run_response.raise_for_status()
@@ -116,6 +121,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert snapshot["completed_cases"] == 1
             assert snapshot["metrics"]["esr"]["mean"] is not None  # type: ignore[index]
             assert snapshot["metrics"]["mrstft"]["p90"] is not None  # type: ignore[index]
+            assert snapshot["nam_a2_realtime_x"] == 10.0
+            assert snapshot["speed_calibration"]["platform"] == "linux-x86_64"
+            assert snapshot["metrics"]["nam_a2_speed_ratio"]["mean"] == 1.25  # type: ignore[index]
 
             original_metrics = snapshot["metrics"]
             metadata_response = await client.patch(

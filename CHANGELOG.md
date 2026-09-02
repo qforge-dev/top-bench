@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a native, non-ONNX NAM-A2-FULL speed calibration using pinned
+  NeuralAmpModelerCore runners. Runs now report candidate speed relative to NAM-A2 on
+  the same machine while retaining absolute realtime, and concurrent processes share a
+  five-minute calibration cache.
 - Deduplicated dry-input downloads across concurrent local processes with a shared
   filesystem lock, and made uploads resilient to longer proxy and deployment outages.
 - Changed server scoring to round-robin fairly across active runs and use multiple

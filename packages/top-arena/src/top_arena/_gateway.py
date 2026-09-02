@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Protocol, Self, cast
 from urllib.parse import quote
 
@@ -14,6 +15,8 @@ from top_arena._models import (
     BenchmarkCase,
     BenchmarkMetadata,
     BenchmarkResult,
+    NamA2CalibrationAssets,
+    NamA2SpeedCalibration,
     RunSnapshot,
 )
 
@@ -76,6 +79,15 @@ class HttpBenchmarkGateway:
         self._event_retry_delay = 0.5
 
     async def create_run(self, metadata: BenchmarkMetadata, amp_id: str) -> str:
+        return await self.create_calibrated_run(metadata, amp_id, None)
+
+    async def create_calibrated_run(
+        self,
+        metadata: BenchmarkMetadata,
+        amp_id: str,
+        calibration: NamA2SpeedCalibration | None,
+    ) -> str:
+        calibration_payload = asdict(calibration) if calibration is not None else {}
         response = await self._get_client().post(
             "api/v1/runs",
             json={
@@ -89,10 +101,39 @@ class HttpBenchmarkGateway:
                 "description": metadata.description,
                 "parameter_count": metadata.parameter_count,
                 "amp_control_count": metadata.amp_control_count,
+                "nam_a2_realtime_x": (calibration.realtime_x if calibration is not None else None),
+                "speed_calibration": calibration_payload,
             },
         )
         _ = response.raise_for_status()
         return _required_str(_response_object(response), "id")
+
+    async def get_nam_a2_calibration_assets(
+        self,
+        platform: str,
+    ) -> NamA2CalibrationAssets:
+        response = await self._get_client().get(
+            "api/v1/calibration/nam-a2-full",
+            params={"platform": platform},
+        )
+        _ = response.raise_for_status()
+        payload = _response_object(response)
+        return NamA2CalibrationAssets(
+            version=_required_str(payload, "version"),
+            platform=_required_str(payload, "platform"),
+            runner_url=_required_str(payload, "runner_url"),
+            runner_sha256=_required_str(payload, "runner_sha256"),
+            model_url=_required_str(payload, "model_url"),
+            model_sha256=_required_str(payload, "model_sha256"),
+            audio_seconds=_optional_float(payload, "audio_seconds", default=2.0),
+        )
+
+    async def download_calibration_asset(self, url: str, destination: Path) -> None:
+        async with self._get_client().stream("GET", url) as response:
+            _ = response.raise_for_status()
+            with destination.open("wb") as output:
+                async for chunk in response.aiter_bytes():
+                    _ = output.write(chunk)
 
     async def update_run_metadata(
         self,

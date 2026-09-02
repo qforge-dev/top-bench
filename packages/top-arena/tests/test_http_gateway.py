@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 from top_arena._gateway import HttpBenchmarkGateway
-from top_arena._models import BenchmarkCase, BenchmarkMetadata
+from top_arena._models import BenchmarkCase, BenchmarkMetadata, NamA2SpeedCalibration
 
 
 async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> None:
@@ -22,6 +22,8 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
             body = json.loads(request.content)
             assert body["amp_id"] == "demo-amp"
             assert body["amp_control_count"] == 5
+            assert body["nam_a2_realtime_x"] is None
+            assert body["speed_calibration"] == {}
             return httpx.Response(201, json={"id": "run-1"})
         if request.method == "PATCH" and request.url.path == "/api/v1/runs/run-1":
             assert json.loads(request.content) == {"amp_control_count": 5}
@@ -103,6 +105,73 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     assert ("GET", "/objects/example.wav") in calls
     assert ("PATCH", "/api/v1/runs/run-1") in calls
     assert event_batches == [[{"kind": "download.completed", "case_id": "case-1", "payload": {}}]]
+
+
+async def test_http_gateway_records_and_downloads_native_nam_calibration(
+    tmp_path: Path,
+) -> None:
+    calibration = NamA2SpeedCalibration(
+        version="native-v1",
+        platform="linux-x86_64",
+        runner_sha256="a" * 64,
+        model_sha256="b" * 64,
+        audio_seconds=2.0,
+        elapsed_seconds=0.1,
+        realtime_x=20.0,
+        measurements_seconds=(0.09, 0.1, 0.11),
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/calibration/nam-a2-full":
+            assert request.url.params["platform"] == "linux-x86_64"
+            return httpx.Response(
+                200,
+                json={
+                    "version": "native-v1",
+                    "platform": "linux-x86_64",
+                    "runner_url": "https://assets.test/benchmodel",
+                    "runner_sha256": "a" * 64,
+                    "model_url": "https://assets.test/model.nam",
+                    "model_sha256": "b" * 64,
+                    "audio_seconds": 2.0,
+                },
+            )
+        if request.url.host == "assets.test":
+            return httpx.Response(200, content=b"asset")
+        if request.url.path == "/api/v1/runs":
+            body = json.loads(request.content)
+            assert body["nam_a2_realtime_x"] == 20.0
+            assert body["speed_calibration"]["platform"] == "linux-x86_64"
+            assert body["speed_calibration"]["measurements_seconds"] == [0.09, 0.1, 0.11]
+            return httpx.Response(201, json={"id": "run-calibrated"})
+        return httpx.Response(404)
+
+    gateway = HttpBenchmarkGateway(
+        "https://arena.test",
+        transport=httpx.MockTransport(respond),
+    )
+    assets = await gateway.get_nam_a2_calibration_assets("linux-x86_64")
+    destination = tmp_path / "asset"
+    await gateway.download_calibration_asset(assets.runner_url, destination)
+    run_id = await gateway.create_calibrated_run(
+        BenchmarkMetadata(
+            name="calibrated",
+            creator="tests",
+            unique_positions_used=1,
+            audio_duration_sum=1.0,
+            turns=1,
+            training_time=1.0,
+            description="native calibration",
+            parameter_count=1,
+        ),
+        "demo-amp",
+        calibration,
+    )
+    await gateway.aclose()
+
+    assert assets.audio_seconds == 2.0
+    assert destination.read_bytes() == b"asset"
+    assert run_id == "run-calibrated"
 
 
 @pytest.mark.parametrize("transient_status", [503, 521])

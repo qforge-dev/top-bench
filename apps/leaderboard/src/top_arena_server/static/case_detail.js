@@ -228,7 +228,13 @@
     addDefinitionListItem(elements.runSummary, "Mean correlation", formatNumber(metricMean(run, "correlation")), "higher is better");
     addDefinitionListItem(elements.runSummary, "MRSTFT", formatNumber(metricMean(run, "mrstft")), "multi-resolution");
     const realtime = metricMean(run, "realtime_x");
-    addDefinitionListItem(elements.runSummary, "Realtime", realtime === null ? "—" : `${formatNumber(realtime, 2)}×`, "higher is faster");
+    const namSpeedRatio = metricMean(run, "nam_a2_speed_ratio");
+    addDefinitionListItem(
+      elements.runSummary,
+      "Speed vs NAM-A2",
+      namSpeedRatio === null ? "—" : `${formatNumber(namSpeedRatio, 2)}×`,
+      realtime === null ? "higher is faster" : `${formatNumber(realtime, 2)}× realtime absolute`,
+    );
     addDefinitionListItem(elements.runSummary, "Positions", formatCompact(run.unique_positions_used), "unique settings");
     const completed = finite(run.completed_cases) ?? 0;
     const total = finite(run.total_cases) ?? 0;

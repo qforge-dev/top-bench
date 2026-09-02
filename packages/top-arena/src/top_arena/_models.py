@@ -18,6 +18,33 @@ type ModelCallback = Callable[
 
 
 @dataclass(frozen=True, slots=True)
+class NamA2CalibrationAssets:
+    """Pinned native NAM-A2 model and runner supplied by the benchmark server."""
+
+    version: str
+    platform: str
+    runner_url: str
+    runner_sha256: str
+    model_url: str
+    model_sha256: str
+    audio_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class NamA2SpeedCalibration:
+    """Machine-local speed measured with NeuralAmpModelerCore."""
+
+    version: str
+    platform: str
+    runner_sha256: str
+    model_sha256: str
+    audio_seconds: float
+    elapsed_seconds: float
+    realtime_x: float
+    measurements_seconds: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BenchmarkMetadata:
     name: str
     creator: str
@@ -74,6 +101,8 @@ class PipelineOptions:
     show_progress: bool = True
     report_min_finding_signal: float = 1.0
     report_min_evidence_signal: float = 1.0
+    calibrate_nam_a2_speed: bool = True
+    nam_a2_calibration_cache_seconds: float = 300.0
 
     def __post_init__(self) -> None:
         integer_options = (
@@ -90,6 +119,9 @@ class PipelineOptions:
             raise ValueError(msg)
         if self.completion_timeout_seconds <= 0:
             msg = "completion_timeout_seconds must be greater than zero"
+            raise ValueError(msg)
+        if self.nam_a2_calibration_cache_seconds < 0:
+            msg = "nam_a2_calibration_cache_seconds must be non-negative"
             raise ValueError(msg)
         report_thresholds = (
             self.report_min_finding_signal,

@@ -108,6 +108,7 @@
       weighted: metric(source, "human_weighted_esr", "humanWeightedEsr"),
       mrstft: metric(source, "mrstft"),
       realtime: metric(source, "realtime_x", "realtimeX"),
+      namA2SpeedRatio: metric(source, "nam_a2_speed_ratio", "namA2SpeedRatio"),
       baseline: {
         esr: metric(baselineSource, "esr"),
         weighted: metric(baselineSource, "human_weighted_esr", "humanWeightedEsr"),
@@ -218,6 +219,20 @@
     return cell;
   }
 
+  function speedCell(run) {
+    const cell = createElement("td", "numeric-cell");
+    cell.dataset.label = "Speed vs NAM-A2";
+    if (run.namA2SpeedRatio !== null) {
+      cell.append(createElement("strong", "", `${formatNumber(run.namA2SpeedRatio, 2)}× NAM-A2`));
+      if (run.realtime !== null) {
+        cell.append(createElement("small", "", `${formatNumber(run.realtime, 2)}× realtime`));
+      }
+    } else {
+      cell.textContent = run.realtime === null ? "—" : `${formatNumber(run.realtime, 2)}× realtime`;
+    }
+    return cell;
+  }
+
   function startedCell(value) {
     const cell = createElement("td", "timestamp-cell");
     cell.dataset.label = "Started (UTC)";
@@ -256,7 +271,7 @@
         metricCell("ESR", run.esr),
         metricCell("Weighted ESR", run.weighted),
         metricCell("MRSTFT", run.mrstft),
-        metricCell("Realtime", run.realtime, run.realtime === null ? "" : "×"),
+        speedCell(run),
         metricCell("Positions", run.positions),
         metricCell("Amp parameters", run.ampParameterCount),
         metricCell("Positions per amp parameter", run.positionsPerControl),
@@ -326,7 +341,11 @@
     elements.selectedSummary.replaceChildren(
       summaryStat("Amp rank", rank === null ? "—" : `#${rank} of ${rankedRuns().length}`, "by mean ESR"),
       summaryStat("Mean ESR", formatNumber(run.esr), esrDelta === null ? "comparison unavailable" : `${Math.abs(esrDelta).toFixed(1)}% vs NAM-A2-FULL`),
-      summaryStat("Realtime", run.realtime === null ? "—" : `${formatNumber(run.realtime, 2)}×`, "higher is faster"),
+      summaryStat(
+        "Speed vs NAM-A2",
+        run.namA2SpeedRatio === null ? "—" : `${formatNumber(run.namA2SpeedRatio, 2)}×`,
+        run.realtime === null ? "higher is faster" : `${formatNumber(run.realtime, 2)}× realtime absolute`,
+      ),
       summaryStat("Cases", `${formatInteger(run.completedCases)} / ${formatInteger(run.totalCases)}`, run.status.replace(/[_-]+/g, " ")),
     );
     renderProfile(run);

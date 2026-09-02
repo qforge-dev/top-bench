@@ -5,8 +5,8 @@
 > field. It also keeps a separate measured-signature section so the complete signed
 > profile remains available. Exact commands and output-mode behavior are documented in
 > [`running-benchmark-cli.md`](running-benchmark-cli.md). The examples below remain the
-> design history and use illustrative values. Current speed classification uses a 31x
-> NAM-FULL target and a 15.5x acceptable floor; the rejected historical iterations below
+> design history and use illustrative values. Current speed classification uses a
+> machine-local native NAM-A2 target and a 0.5x-NAM-A2 acceptable floor; the rejected historical iterations below
 > used the incorrect assumption that merely exceeding realtime was a strength.
 
 This proposal targets two audiences at once: a person reading a terminal and an AI agent

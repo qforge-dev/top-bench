@@ -43,6 +43,7 @@ def leaderboard_metric_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "human_weighted_esr": mean(metrics, "human_weighted_esr"),
         "mrstft": mean(metrics, "mrstft"),
         "realtime_x": mean(metrics, "realtime_x"),
+        "nam_a2_speed_ratio": mean(metrics, "nam_a2_speed_ratio"),
         "nam_a2_full": {
             "esr": mean(baseline_metrics, "esr"),
             "human_weighted_esr": mean(baseline_metrics, "human_weighted_esr"),
@@ -110,6 +111,8 @@ class BenchmarkRun(Base):
     training_time: Mapped[float] = mapped_column(Float)
     description: Mapped[str] = mapped_column(Text)
     parameter_count: Mapped[int] = mapped_column(BigInteger)
+    nam_a2_realtime_x: Mapped[float | None] = mapped_column(Float)
+    speed_calibration: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(32), default="running", index=True)
     client_finished: Mapped[bool] = mapped_column(Boolean, default=False)
     total_cases: Mapped[int] = mapped_column(Integer)

@@ -383,6 +383,17 @@
   vertical-align: middle;
 }
 
+.amp-model-table .numeric-cell > strong,
+.amp-model-table .numeric-cell > small {
+  display: block;
+  white-space: nowrap;
+}
+
+.amp-model-table .numeric-cell > small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
 .amp-model-table tbody tr {
   cursor: pointer;
   transition: background-color 130ms ease;

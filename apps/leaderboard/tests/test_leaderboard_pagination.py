@@ -119,6 +119,7 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
                 "human_weighted_esr",
                 "mrstft",
                 "nam_a2_full",
+                "nam_a2_speed_ratio",
                 "realtime_x",
             }
             assert "diagnostics" not in first["runs"][0]["metrics"]

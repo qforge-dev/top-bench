@@ -189,6 +189,13 @@ def test_realtime_summary_treats_more_realtime_x_as_better() -> None:
     assert summary["best"] == 4.0
     assert summary["worst"] == 1.0
 
+    calibrated = aggregate_metrics(rows, nam_a2_realtime_x=2.0)
+    assert calibrated["nam_a2_speed_ratio"]["mean"] == pytest.approx(7 / 6)
+    assert calibrated["nam_a2_speed_ratio"]["best"] == 2.0
+    assert calibrated["nam_a2_speed_ratio"]["worst"] == 0.5
+    assert calibrated["diagnostics"]["speed"]["nam_a2_realtime_x"] == 2.0
+    assert calibrated["diagnostics"]["speed"]["mean_nam_a2_speed_ratio"] == pytest.approx(7 / 6)
+
     metrics = aggregate_metrics(rows)
     assert metrics["contract"]["version"] == "top-arena-audio-v3"
     assert metrics["contract"]["comparisons"]["nam_a2_full"] == (

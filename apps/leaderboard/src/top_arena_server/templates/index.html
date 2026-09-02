@@ -203,7 +203,7 @@
                   <button class="sort-button" type="button" data-sort="started">Started (UTC) <span aria-hidden="true">↕</span></button>
                 </th>
                 <th scope="col" aria-sort="none">
-                  <button class="sort-button" type="button" data-sort="realtime">Realtime <span aria-hidden="true">↕</span></button>
+                  <button class="sort-button" type="button" data-sort="realtime">Speed vs NAM-A2 <span aria-hidden="true">↕</span></button>
                 </th>
                 <th class="metric-column" scope="col" aria-sort="none">
                   <button class="sort-button" type="button" data-sort="esr">ESR <small>mean</small> <span aria-hidden="true">↕</span></button>
@@ -221,6 +221,7 @@
                 {% set metrics = run.metrics|default({}, true) %}
                 {% set nam_metrics = metrics.nam_a2_full|default({}, true) %}
                 {% set realtime = metrics.realtime_x|default({}, true) %}
+                {% set nam_speed = metrics.nam_a2_speed_ratio|default({}, true) %}
                 {% set completed = run.completed_cases|default(0, true)|int %}
                 {% set total = run.total_cases|default(run.case_count|default(0, true), true)|int %}
                 {% set status = run.status|default("queued", true) %}
@@ -241,8 +242,13 @@
                   <td data-label="Amp parameters" class="numeric-cell">{{ integer(run.amp_control_count) }}</td>
                   <td data-label="Positions per amp parameter" class="numeric-cell">{{ ratio(run.unique_positions_used, run.amp_control_count) }}</td>
                   <td data-label="Started (UTC)" class="timestamp-cell"><time datetime="{{ run.created_at }}">{{ run.created_at[8:10] }}.{{ run.created_at[5:7] }}.{{ run.created_at[0:4] }} {{ run.created_at[11:16] }}</time></td>
-                  <td data-label="Realtime" class="numeric-cell">
-                    {% if realtime.mean|default(none) is not none %}{{ number(realtime.mean, 2) }}×{% else %}—{% endif %}
+                  <td data-label="Speed vs NAM-A2" class="numeric-cell">
+                    {% if nam_speed.mean|default(none) is not none %}
+                      <strong>{{ number(nam_speed.mean, 2) }}× NAM-A2</strong>
+                      {% if realtime.mean|default(none) is not none %}<small>{{ number(realtime.mean, 2) }}× realtime</small>{% endif %}
+                    {% elif realtime.mean|default(none) is not none %}
+                      {{ number(realtime.mean, 2) }}× realtime
+                    {% else %}—{% endif %}
                   </td>
                   <td data-label="ESR">{{ metric_summary(metrics.esr, nam_metrics.esr) }}</td>
                   <td data-label="Human-weighted ESR">{{ metric_summary(metrics.human_weighted_esr, nam_metrics.human_weighted_esr) }}</td>

@@ -96,6 +96,12 @@ not uploaded, scored, included in per-case realtime measurements, or included in
 reported run timer. The callback is therefore invoked once more than the number of scored
 benchmark cases.
 
+The SDK also downloads a pinned official NAM-A2-FULL `.nam` model and a platform-native
+NeuralAmpModelerCore runner. It renders that model directly—without ONNX—before creating
+the run, excluding model load from the timed native inference. The median of three native
+measurements becomes the machine-local baseline. Assets and the result are protected by
+cross-process locks; runs started together reuse the same result for five minutes.
+
 Stereo output is folded to mono by the scoring service, and output at a different
 sample rate is resampled to the 48 kHz reference rate. Returning audio with the same
 duration and alignment as the dry input produces the most meaningful comparison.
@@ -237,7 +243,11 @@ Release changes are listed in the
 `metrics` mapping contains mean, P90, best, and worst summaries for the versioned
 metric contract. The primary metrics are ESR, human-weighted ESR, and MRSTFT; lower
 is better. Correlation and render speed are also reported; higher is better.
-Speed is evaluated against the 31x NAM-FULL target, with 15.5x as the acceptable floor.
+`realtime_x` retains the absolute callback speed. `nam_a2_speed_ratio` divides it by the
+native NAM-A2 speed measured on the same machine: `1.0` matches NAM-A2, `1.2` is 20%
+faster, and `0.8` is 20% slower. The acceptable diagnostic floor is half of the local
+NAM-A2 speed. If native calibration is unavailable on a platform, the run falls back to
+the legacy absolute measurement and records no normalized ratio.
 
 When the server provides diagnostic contract `top-arena-run-diagnostics-v6`,
 `result.metrics["diagnostics"]` also contains signed level and band measurements,

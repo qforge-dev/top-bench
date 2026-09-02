@@ -31,6 +31,16 @@ class ManifestResponse(ApiModel):
     cases: list[ManifestCase]
 
 
+class NamA2CalibrationAssetsResponse(ApiModel):
+    version: str
+    platform: str
+    runner_url: str
+    runner_sha256: str
+    model_url: str
+    model_sha256: str
+    audio_seconds: float
+
+
 class CreateRunRequest(ApiModel):
     amp_id: str
     name: str
@@ -42,6 +52,8 @@ class CreateRunRequest(ApiModel):
     training_time: float
     description: str
     parameter_count: int
+    nam_a2_realtime_x: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    speed_calibration: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateRunResponse(ApiModel):
@@ -136,6 +148,8 @@ class RunResponse(ApiModel):
     training_time: float
     description: str
     parameter_count: int
+    nam_a2_realtime_x: float | None
+    speed_calibration: dict[str, Any]
     status: str
     total_cases: int
     completed_cases: int

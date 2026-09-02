@@ -1,0 +1,99 @@
+name: Native NAM calibration assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+            executable: build/tools/benchmodel
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+            executable: build/tools/benchmodel
+          - runner: macos-15
+            platform: darwin-arm64
+            executable: build/tools/benchmodel
+          - runner: macos-15-intel
+            platform: darwin-x86_64
+            executable: build/tools/benchmodel
+          - runner: windows-2025
+            platform: windows-x86_64
+            executable: build/tools/Release/benchmodel.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out NeuralAmpModelerCore
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: sdatkinson/NeuralAmpModelerCore
+          ref: v0.5.4
+          submodules: recursive
+          path: nam-core
+
+      - name: Configure release build
+        run: cmake -S nam-core -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native runner
+        run: cmake --build build --config Release --target benchmodel --parallel 4
+
+      - name: Stage Unix runner
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "${{ matrix.executable }}" "dist/benchmodel-${{ matrix.platform }}"
+          chmod 0755 "dist/benchmodel-${{ matrix.platform }}"
+
+      - name: Stage Windows runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "${{ matrix.executable }}" "dist/benchmodel-${{ matrix.platform }}.exe"
+
+      - name: Upload runner artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmodel-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish pinned native runners
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download runners
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: benchmodel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums
+        working-directory: dist
+        run: sha256sum benchmodel-* > SHA256SUMS
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: native-nam-calibration-v1
+        shell: bash
+        run: |
+          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$REPOSITORY"
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$REPOSITORY" \
+              --title "Native NAM-A2 calibration v1" \
+              --notes "Pinned NeuralAmpModelerCore v0.5.4 benchmodel runners for machine-local NAM-A2 speed calibration. Built from upstream commit 1f42f88535884450104b8711d7595019afa0495b with the A2 fast path enabled."
+          fi

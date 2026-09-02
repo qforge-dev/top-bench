@@ -783,11 +783,20 @@ def _control_setting_relationships(
     )
 
 
-def _speed_assessment(rows: Sequence[RunCase]) -> dict[str, Any]:
+def _speed_assessment(
+    rows: Sequence[RunCase],
+    *,
+    nam_a2_realtime_x: float | None = None,
+) -> dict[str, Any]:
     available = [(row, float(row.realtime_x)) for row in rows if row.realtime_x is not None]
     if not available:
         return {}
-    target = _NAM_FULL_REALTIME_TARGET
+    calibrated = nam_a2_realtime_x is not None and nam_a2_realtime_x > 0
+    target = (
+        nam_a2_realtime_x
+        if calibrated and nam_a2_realtime_x is not None
+        else _NAM_FULL_REALTIME_TARGET
+    )
     acceptable_floor = target * _ACCEPTABLE_REALTIME_FRACTION
     values = [value for _row, value in available]
     target_cases = sum(value >= target for value in values)
@@ -802,9 +811,13 @@ def _speed_assessment(rows: Sequence[RunCase]) -> dict[str, Any]:
         ((row, value) for row, value in available if value < acceptable_floor),
         key=lambda item: item[1],
     )
-    return {
+    result = {
         "direction": "higher_is_better",
-        "basis": "NAM-FULL speed target",
+        "basis": (
+            "machine-local native NAM-A2-FULL speed"
+            if calibrated
+            else "legacy NAM-FULL speed target"
+        ),
         "target_realtime_x": target,
         "acceptable_realtime_x": acceptable_floor,
         "acceptable_fraction_of_target": _ACCEPTABLE_REALTIME_FRACTION,
@@ -819,12 +832,26 @@ def _speed_assessment(rows: Sequence[RunCase]) -> dict[str, Any]:
             {
                 **_case_context(row),
                 "realtime_x": value,
+                **({"nam_a2_speed_ratio": value / target} if calibrated else {}),
                 "signal_strength": acceptable_floor / max(value, _EPSILON),
                 "signal_definition": "acceptable speed floor / measured case speed",
             }
             for row, value in below_floor
         ],
     }
+    if calibrated:
+        ratios = [value / target for value in values]
+        result.update(
+            {
+                "nam_a2_realtime_x": target,
+                "target_nam_a2_speed_ratio": 1.0,
+                "acceptable_nam_a2_speed_ratio": _ACCEPTABLE_REALTIME_FRACTION,
+                "mean_nam_a2_speed_ratio": float(np.mean(ratios)),
+                "slowest_nam_a2_speed_ratio": min(ratios),
+                "fastest_nam_a2_speed_ratio": max(ratios),
+            }
+        )
+    return result
 
 
 def _findings(  # noqa: PLR0912
@@ -1055,7 +1082,11 @@ def _findings(  # noqa: PLR0912
     return {"strengths": strengths, "significant": significant}
 
 
-def aggregate_diagnostics(rows: Sequence[RunCase]) -> dict[str, Any]:
+def aggregate_diagnostics(
+    rows: Sequence[RunCase],
+    *,
+    nam_a2_realtime_x: float | None = None,
+) -> dict[str, Any]:
     """Aggregate per-case diagnostics into a self-contained agent evidence packet."""
     available = [row for row in rows if isinstance((row.analysis or {}).get("diagnostics"), dict)]
     paired = _paired_baseline(rows)
@@ -1063,7 +1094,7 @@ def aggregate_diagnostics(rows: Sequence[RunCase]) -> dict[str, Any]:
     concentration = _error_concentration(rows)
     phases = _phase_aggregate(available)
     associations = _associations(available)
-    speed = _speed_assessment(rows)
+    speed = _speed_assessment(rows, nam_a2_realtime_x=nam_a2_realtime_x)
     return {
         "version": "top-arena-run-diagnostics-v6",
         "coverage": {

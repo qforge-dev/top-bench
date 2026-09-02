@@ -119,8 +119,10 @@ then uses bounded download → inference → upload queues. Each stage overlaps 
 dry files are cached by content hash and deduplicated across local processes, and every
 stage transition is sent to the server event log. `realtime_x` is audio duration divided
 by timed model wall time.
-Speed is higher-is-better and is evaluated against a 31x NAM-FULL target; 15.5x is the
-acceptable floor. Merely exceeding 1x is not classified as a strength.
+Before the candidate starts, a pinned NAM-A2-FULL `.nam` runs directly through the native
+NeuralAmpModelerCore runtime (no ONNX). `nam_a2_speed_ratio` compares candidate speed with
+that same-machine baseline: `1.0` matches NAM-A2 and higher is faster. Absolute realtime
+remains available as secondary context.
 
 ## Use the web application
 

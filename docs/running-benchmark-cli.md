@@ -97,7 +97,7 @@ Default reporting thresholds:
 | ESR evidence case | At least 2x the uniform case share |
 | Attack timing | At least 2 ms absolute median delta |
 | Condition association | Absolute Spearman rho of at least 0.5 |
-| Speed | Slowest case below the 15.5x acceptable floor |
+| Speed | Slowest case below 0.5x the machine-local native NAM-A2 speed |
 
 For multi-part signals, any component below `1.0x` keeps the combined signal below the
 floor. Once every component passes, their geometric mean preserves how far the signal is
@@ -106,8 +106,8 @@ audibility thresholds.
 
 The report performs the calculations before returning the result. It includes:
 
-- Completion and coverage, scalar fit distributions, and model speed against the 31x
-  NAM-FULL target and 15.5x acceptable floor.
+- Completion and coverage, scalar fit distributions, absolute realtime, and model speed
+  relative to native NAM-A2-FULL measured on the same machine.
 - Paired candidate/NAM case counts, median and geometric-mean percentage changes, and a
   95% input-chunk-clustered bootstrap interval when at least two input chunks are available.
 - Signed candidate/reference level, peak, crest-factor, and fixed-band energy deltas.

@@ -6,7 +6,12 @@ import time
 from dataclasses import asdict
 from typing import Any, TextIO, cast
 
-from top_arena._models import BenchmarkResult, ReportFormat, RunSnapshot
+from top_arena._models import (
+    BenchmarkResult,
+    NamA2SpeedCalibration,
+    ReportFormat,
+    RunSnapshot,
+)
 
 
 def _number(value: object) -> float | None:
@@ -298,19 +303,29 @@ def _agent_report(  # noqa: PLR0912
             "acceptable": "ACCEPTABLE",
             "below_acceptable": "BELOW ACCEPTABLE",
         }
-        lines.extend(
-            [
-                "",
-                "SPEED  (higher is better; NAM-FULL target 31x, acceptable floor 15.5x)",
-                (
-                    f"  {float(speed['mean_realtime_x']):.2f}x mean  "
-                    f"{float(speed['slowest_realtime_x']):.2f}x slowest  "
-                    f"{speed['target_met_cases']}/{speed['cases']} meet target  "
-                    f"{speed['acceptable_cases']}/{speed['cases']} meet acceptable floor  "
-                    f"[{status_labels.get(str(speed.get('status')), 'UNCLASSIFIED')}]"
-                ),
-            ]
-        )
+        mean_ratio = _number(speed.get("mean_nam_a2_speed_ratio"))
+        slowest_ratio = _number(speed.get("slowest_nam_a2_speed_ratio"))
+        if mean_ratio is not None and slowest_ratio is not None:
+            title = (
+                "SPEED  (candidate/native NAM-A2 on this machine; higher is better; "
+                "1.0x matches NAM-A2)"
+            )
+            summary = (
+                f"  {mean_ratio:.2f}x NAM-A2 mean  {slowest_ratio:.2f}x slowest  "
+                f"{float(speed['mean_realtime_x']):.2f}x absolute realtime mean  "
+                f"{speed['target_met_cases']}/{speed['cases']} match NAM-A2  "
+                f"[{status_labels.get(str(speed.get('status')), 'UNCLASSIFIED')}]"
+            )
+        else:
+            title = "SPEED  (higher is better; NAM-FULL target 31x, acceptable floor 15.5x)"
+            summary = (
+                f"  {float(speed['mean_realtime_x']):.2f}x mean  "
+                f"{float(speed['slowest_realtime_x']):.2f}x slowest  "
+                f"{speed['target_met_cases']}/{speed['cases']} meet target  "
+                f"{speed['acceptable_cases']}/{speed['cases']} meet acceptable floor  "
+                f"[{status_labels.get(str(speed.get('status')), 'UNCLASSIFIED')}]"
+            )
+        lines.extend(["", title, summary])
 
     paired = _mapping(diagnostics.get("paired_nam"))
     if paired:
@@ -454,11 +469,20 @@ def _text_report(
             lines.append(f"{label}: mean {mean:.4f}, worst {worst:.4f}")
     speed = _mapping(diagnostics.get("speed"))
     if speed:
-        lines.append(
-            f"speed: {float(speed['mean_realtime_x']):.2f}x mean, "
-            f"{float(speed['slowest_realtime_x']):.2f}x slowest; "
-            f"status {speed['status']} against 31x target / 15.5x acceptable floor"
-        )
+        mean_ratio = _number(speed.get("mean_nam_a2_speed_ratio"))
+        slowest_ratio = _number(speed.get("slowest_nam_a2_speed_ratio"))
+        if mean_ratio is not None and slowest_ratio is not None:
+            lines.append(
+                f"speed: {mean_ratio:.2f}x NAM-A2 mean, {slowest_ratio:.2f}x slowest; "
+                f"absolute mean {float(speed['mean_realtime_x']):.2f}x realtime; "
+                f"status {speed['status']}"
+            )
+        else:
+            lines.append(
+                f"speed: {float(speed['mean_realtime_x']):.2f}x mean, "
+                f"{float(speed['slowest_realtime_x']):.2f}x slowest; "
+                f"status {speed['status']} against legacy 31x target / 15.5x floor"
+            )
     significant = _items(findings.get("significant"))
     if not significant:
         significant = _items(findings.get("priorities"))
@@ -502,12 +526,32 @@ class ConsoleReporter:
     def enabled(self) -> bool:
         return self._format != "none"
 
-    def start(self, model_name: str, amp_id: str) -> None:
+    def start(
+        self,
+        model_name: str,
+        amp_id: str,
+        *,
+        calibration: NamA2SpeedCalibration | None = None,
+    ) -> None:
         self._started_at = time.monotonic()
         if self._format == "jsonl":
-            self._json_line({"type": "run_started", "model": model_name, "amp_id": amp_id})
+            payload: dict[str, object] = {
+                "type": "run_started",
+                "model": model_name,
+                "amp_id": amp_id,
+            }
+            if calibration is not None:
+                payload["nam_a2_calibration_realtime_x"] = calibration.realtime_x
+                payload["nam_a2_calibration_platform"] = calibration.platform
+            self._json_line(payload)
         elif self._show_progress:
             print(f"Top Arena  {model_name} -> {amp_id}", file=self._stderr, flush=True)
+            if calibration is not None:
+                print(
+                    f"Local native NAM-A2 baseline  {calibration.realtime_x:.2f}x realtime",
+                    file=self._stderr,
+                    flush=True,
+                )
             print("Scoring ", end="", file=self._stderr, flush=True)
             self._line_open = True
 

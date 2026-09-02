@@ -154,16 +154,22 @@ handling in the scoring contract.
 - `1×`: model processing takes approximately the audio duration.
 - Above `1×`: faster than real time.
 - Below `1×`: slower than real time.
-- Top Arena speed target: `31×`, matching the NAM-FULL target.
-- Acceptable floor: `15.5×`, or half of the target.
+- `nam_a2_speed_ratio`: candidate `realtime_x` divided by a native NAM-A2-FULL
+  `realtime_x` measured at the start of the run on the same machine.
+- `1.0× NAM-A2`: matches local native NAM-A2 speed.
+- Acceptable floor: `0.5× NAM-A2`, or half of the machine-local baseline.
 
-Merely exceeding `1×` is not reported as a strength. A run is a speed strength only when
-every scored case reaches `31×`. If every case is between `15.5×` and `31×`, speed is
-reported as acceptable. Any case below `15.5×` produces a conditional profiling
-suggestion. Lower values are worse.
+The native baseline loads an official `.nam` model directly in NeuralAmpModelerCore; it
+does not use ONNX. Model loading is outside the timer, three inference measurements are
+combined by their median, and simultaneous local benchmark processes share a short-lived
+cached result. A run is a speed strength only when every scored case reaches the local
+NAM-A2 speed. Any case below half of it is below the acceptable floor. Lower values are
+worse.
 
-It measures the callback execution, not download, FLAC transcoding, upload, or server
-scoring. Hardware and runtime configuration are necessary context for comparisons.
+Candidate `realtime_x` measures callback execution, not download, FLAC transcoding,
+upload, or server scoring. The normalized ratio controls for much of the hardware
+difference because both candidate and NAM-A2 are measured locally, though runtime and
+system load can still influence results.
 
 ## Aggregate fields
 

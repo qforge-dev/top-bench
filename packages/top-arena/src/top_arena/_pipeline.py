@@ -5,15 +5,20 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import inspect
+import json
 import logging
 import os
+import platform
+import re
 import secrets
+import stat
+import statistics
 import time
 import uuid
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, BinaryIO, Protocol, cast, runtime_checkable
 
 import soundfile as sf
 
@@ -27,6 +32,8 @@ from top_arena._models import (
     BenchmarkMetadata,
     BenchmarkResult,
     ModelCallback,
+    NamA2CalibrationAssets,
+    NamA2SpeedCalibration,
     PipelineOptions,
 )
 from top_arena._reporting import ConsoleReporter
@@ -37,11 +44,34 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 _CACHE_LOCK_RETRY_SECONDS = 0.05
+_NAM_A2_MEASUREMENT_COUNT = 3
+_NAM_A2_RUN_TIMEOUT_SECONDS = 120.0
+_BENCHMODEL_MILLISECONDS = re.compile(r"^([0-9]+(?:\.[0-9]+)?)ms$")
 
 
 @runtime_checkable
 class _AsyncClosable(Protocol):
     async def aclose(self) -> None: ...
+
+
+@runtime_checkable
+class _NamA2CalibrationGateway(Protocol):
+    async def get_nam_a2_calibration_assets(
+        self,
+        platform: str,
+    ) -> NamA2CalibrationAssets: ...
+
+    async def download_calibration_asset(self, url: str, destination: Path) -> None: ...
+
+
+@runtime_checkable
+class _CalibratedRunGateway(Protocol):
+    async def create_calibrated_run(
+        self,
+        metadata: BenchmarkMetadata,
+        amp_id: str,
+        calibration: NamA2SpeedCalibration | None,
+    ) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,10 +133,18 @@ class BenchmarkRun:
         )
         self._cache_locks = {}
         try:
-            run_id = await self._gateway.create_run(self._metadata, amp_id)
+            calibration = await self._calibrate_nam_a2_speed()
+            if isinstance(self._gateway, _CalibratedRunGateway):
+                run_id = await self._gateway.create_calibrated_run(
+                    self._metadata,
+                    amp_id,
+                    calibration,
+                )
+            else:
+                run_id = await self._gateway.create_run(self._metadata, amp_id)
             cases = await self._gateway.get_manifest(amp_id)
             await self._warm_up_model(run_id, cases, callback)
-            reporter.start(self._metadata.name, amp_id)
+            reporter.start(self._metadata.name, amp_id, calibration=calibration)
             completion_task = asyncio.create_task(self._wait_for_result(run_id, reporter))
             await self._gateway.emit_event(run_id, "run.started", payload={"amp_id": amp_id})
             await self._execute_pipeline(run_id, cases, callback)
@@ -133,6 +171,141 @@ class BenchmarkRun:
                     await completion_task
             if isinstance(self._gateway, _AsyncClosable):
                 await self._gateway.aclose()
+
+    async def _calibrate_nam_a2_speed(self) -> NamA2SpeedCalibration | None:
+        if not self._options.calibrate_nam_a2_speed or not isinstance(
+            self._gateway, _NamA2CalibrationGateway
+        ):
+            return None
+        try:
+            platform_name = _native_platform_name()
+            assets = await self._gateway.get_nam_a2_calibration_assets(platform_name)
+            if assets.platform != platform_name:
+                msg = (
+                    "NAM-A2 calibration server returned assets for "
+                    f"{assets.platform!r}, expected {platform_name!r}"
+                )
+                raise ValueError(msg)  # noqa: TRY301
+            return await self._cached_nam_a2_calibration(assets)
+        except Exception:
+            LOGGER.warning(
+                "native NAM-A2 speed calibration unavailable; continuing with absolute "
+                "realtime measurements only",
+                exc_info=True,
+            )
+            return None
+
+    async def _cached_nam_a2_calibration(
+        self,
+        assets: NamA2CalibrationAssets,
+    ) -> NamA2SpeedCalibration:
+        cache_key = hashlib.sha256(
+            (
+                f"{assets.version}:{assets.platform}:{assets.runner_sha256}:{assets.model_sha256}"
+            ).encode()
+        ).hexdigest()
+        result_path = self._cache_dir / "nam-a2-calibration" / f"{cache_key}.json"
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_lock = await _acquire_cache_file_lock(result_path)
+        try:
+            cached = await asyncio.to_thread(
+                _read_cached_calibration,
+                result_path,
+                self._options.nam_a2_calibration_cache_seconds,
+            )
+            if cached is not None:
+                return cached
+            runner_path, model_path = await asyncio.gather(
+                self._get_calibration_asset(
+                    assets.runner_url,
+                    assets.runner_sha256,
+                    executable=True,
+                ),
+                self._get_calibration_asset(
+                    assets.model_url,
+                    assets.model_sha256,
+                    executable=False,
+                ),
+            )
+            measurements = tuple(
+                [
+                    await _run_native_nam_benchmark(runner_path, model_path)
+                    for _ in range(_NAM_A2_MEASUREMENT_COUNT)
+                ]
+            )
+            elapsed_seconds = statistics.median(measurements)
+            calibration = NamA2SpeedCalibration(
+                version=assets.version,
+                platform=assets.platform,
+                runner_sha256=assets.runner_sha256,
+                model_sha256=assets.model_sha256,
+                audio_seconds=assets.audio_seconds,
+                elapsed_seconds=elapsed_seconds,
+                realtime_x=assets.audio_seconds / elapsed_seconds,
+                measurements_seconds=measurements,
+            )
+            await asyncio.to_thread(_write_cached_calibration, result_path, calibration)
+            LOGGER.info(
+                "native NAM-A2 calibration completed platform=%s realtime_x=%.3f "
+                "measurements_seconds=%s",
+                calibration.platform,
+                calibration.realtime_x,
+                calibration.measurements_seconds,
+            )
+            return calibration
+        finally:
+            _release_cache_file_lock(result_lock)
+
+    async def _get_calibration_asset(
+        self,
+        url: str,
+        sha256: str,
+        *,
+        executable: bool,
+    ) -> Path:
+        suffix = ".exe" if executable and os.name == "nt" else (".nam" if not executable else "")
+        destination = self._cache_dir / "nam-a2-calibration" / "assets" / f"{sha256}{suffix}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        lock = self._cache_locks.setdefault(destination, asyncio.Lock())
+        async with lock:
+            file_lock = await _acquire_cache_file_lock(destination)
+            try:
+                if destination.is_file():
+                    actual_sha256 = await asyncio.to_thread(_file_sha256, destination)
+                    if actual_sha256 == sha256:
+                        if executable:
+                            await asyncio.to_thread(_make_executable, destination)
+                        return destination
+                    LOGGER.warning(
+                        "discarding corrupt NAM-A2 calibration asset path=%s expected=%s actual=%s",
+                        destination,
+                        sha256,
+                        actual_sha256,
+                    )
+                    destination.unlink()
+                temporary_path = destination.with_name(
+                    f".{destination.name}.{uuid.uuid4().hex}.part"
+                )
+                try:
+                    gateway = cast("_NamA2CalibrationGateway", self._gateway)
+                    await gateway.download_calibration_asset(url, temporary_path)
+                    actual_sha256 = await asyncio.to_thread(_file_sha256, temporary_path)
+                    if actual_sha256 != sha256:
+                        msg = (
+                            "NAM-A2 calibration asset checksum mismatch: "
+                            f"expected {sha256}, got {actual_sha256}"
+                        )
+                        raise ValueError(msg)  # noqa: TRY301
+                    await asyncio.to_thread(os.replace, temporary_path, destination)
+                except BaseException:
+                    with suppress(OSError):
+                        temporary_path.unlink()
+                    raise
+                if executable:
+                    await asyncio.to_thread(_make_executable, destination)
+                return destination
+            finally:
+                _release_cache_file_lock(file_lock)
 
     async def _report_client_failure(self, run_id: str, error: Exception) -> None:
         for attempt in range(3):
@@ -491,3 +664,108 @@ def _transcode_to_flac(source: Path, destination: Path) -> None:
             if len(block) == 0:
                 break
             _ = output_audio.write(block)
+
+
+def _native_platform_name() -> str:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    architectures = {
+        "aarch64": "arm64",
+        "amd64": "x86_64",
+        "arm64": "arm64",
+        "x86_64": "x86_64",
+    }
+    operating_systems = {
+        "darwin": "darwin",
+        "linux": "linux",
+        "windows": "windows",
+    }
+    if system not in operating_systems or machine not in architectures:
+        msg = f"native NAM-A2 calibration is not available on {system}-{machine}"
+        raise RuntimeError(msg)
+    return f"{operating_systems[system]}-{architectures[machine]}"
+
+
+async def _run_native_nam_benchmark(runner_path: Path, model_path: Path) -> float:
+    process = await asyncio.create_subprocess_exec(
+        str(runner_path),
+        str(model_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        async with asyncio.timeout(_NAM_A2_RUN_TIMEOUT_SECONDS):
+            stdout, stderr = await process.communicate()
+    except TimeoutError:
+        process.kill()
+        _ = await process.wait()
+        msg = "native NAM-A2 calibration timed out"
+        raise TimeoutError(msg) from None
+    output = stdout.decode(errors="replace")
+    error_output = stderr.decode(errors="replace")
+    if process.returncode != 0:
+        msg = (
+            f"native NAM-A2 calibration exited with {process.returncode}: {error_output or output}"
+        )
+        raise RuntimeError(msg)
+    elapsed_ms = [
+        float(match.group(1))
+        for line in output.splitlines()
+        if (match := _BENCHMODEL_MILLISECONDS.fullmatch(line.strip())) is not None
+    ]
+    if not elapsed_ms or elapsed_ms[-1] <= 0:
+        msg = f"native NAM-A2 calibration returned unexpected output: {output}"
+        raise RuntimeError(msg)
+    return elapsed_ms[-1] / 1_000.0
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _make_executable(path: Path) -> None:
+    if os.name != "nt":
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _read_cached_calibration(
+    path: Path,
+    max_age_seconds: float,
+) -> NamA2SpeedCalibration | None:
+    if max_age_seconds <= 0 or not path.is_file():
+        return None
+    if time.time() - path.stat().st_mtime > max_age_seconds:
+        return None
+    try:
+        payload = json.loads(path.read_text())
+        if not isinstance(payload, dict):
+            return None
+        measurements = payload["measurements_seconds"]
+        if not isinstance(measurements, list):
+            return None
+        return NamA2SpeedCalibration(
+            version=str(payload["version"]),
+            platform=str(payload["platform"]),
+            runner_sha256=str(payload["runner_sha256"]),
+            model_sha256=str(payload["model_sha256"]),
+            audio_seconds=float(payload["audio_seconds"]),
+            elapsed_seconds=float(payload["elapsed_seconds"]),
+            realtime_x=float(payload["realtime_x"]),
+            measurements_seconds=tuple(float(value) for value in measurements),
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _write_cached_calibration(path: Path, calibration: NamA2SpeedCalibration) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.part")
+    try:
+        temporary.write_text(json.dumps(asdict(calibration), sort_keys=True))
+        temporary.replace(path)
+    finally:
+        with suppress(OSError):
+            temporary.unlink()

@@ -37,6 +37,7 @@ from .schemas import (
     LeaderboardResponse,
     ManifestCase,
     ManifestResponse,
+    NamA2CalibrationAssetsResponse,
     RunCaseAnalysisResponse,
     RunCaseAudioResponse,
     RunCaseDetailResponse,
@@ -70,6 +71,22 @@ SIMPLE_AMP_IDS = frozenset(
     }
 )
 LEADERBOARD_PAGE_SIZE = 25
+NAM_A2_CALIBRATION_VERSION = "top-arena-native-nam-a2-speed-v1"
+NAM_A2_CALIBRATION_AUDIO_SECONDS = 2.0
+NAM_A2_CALIBRATION_MODEL_KEY = (
+    "reference-corpus/v1/nam-a2-full/v1/models/blackface63-simple/position-01/training/model.nam"
+)
+NAM_A2_CALIBRATION_MODEL_SHA256 = "385d082afb6519b918bf965c70801e9f4a1598701b929ef42e8ac8cc263a7ebf"
+NAM_A2_CALIBRATION_RELEASE_URL = (
+    "https://github.com/qforge-dev/top-bench/releases/download/native-nam-calibration-v1"
+)
+NAM_A2_CALIBRATION_RUNNERS = {
+    "darwin-arm64": ("benchmodel-darwin-arm64", "PENDING"),
+    "darwin-x86_64": ("benchmodel-darwin-x86_64", "PENDING"),
+    "linux-arm64": ("benchmodel-linux-arm64", "PENDING"),
+    "linux-x86_64": ("benchmodel-linux-x86_64", "PENDING"),
+    "windows-x86_64": ("benchmodel-windows-x86_64.exe", "PENDING"),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +203,8 @@ def _run_response(
         training_time=run.training_time,
         description=run.description,
         parameter_count=run.parameter_count,
+        nam_a2_realtime_x=run.nam_a2_realtime_x,
+        speed_calibration=run.speed_calibration,
         status=run.status,
         total_cases=run.total_cases,
         completed_cases=run.completed_cases,
@@ -345,7 +364,7 @@ async def _leaderboard_runs(
         "positions": lambda run: run.unique_positions_used,
         "esr": lambda run: metric_value(run, "esr"),
         "mrstft": lambda run: metric_value(run, "mrstft"),
-        "speed": lambda run: metric_value(run, "realtime_x"),
+        "speed": lambda run: metric_value(run, "nam_a2_speed_ratio"),
         "created": lambda run: run.created_at,
     }
     key = keys.get(sort_key, keys["esr"])
@@ -379,8 +398,8 @@ def _sort_leaderboard_runs(
         ),
         "started": lambda run: run.created_at,
         "created": lambda run: run.created_at,
-        "realtime": lambda run: _metric_mean(run, "realtime_x"),
-        "speed": lambda run: _metric_mean(run, "realtime_x"),
+        "realtime": lambda run: _metric_mean(run, "nam_a2_speed_ratio"),
+        "speed": lambda run: _metric_mean(run, "nam_a2_speed_ratio"),
         "esr": lambda run: _metric_mean(run, "esr"),
         "humanWeightedEsr": lambda run: _metric_mean(run, "human_weighted_esr"),
         "mrstft": lambda run: _metric_mean(run, "mrstft"),
@@ -634,6 +653,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=value,
             media_type="audio/wav",
             headers={"ETag": benchmark_case.dry_sha256},
+        )
+
+    @app.get(
+        "/api/v1/calibration/nam-a2-full",
+        response_model=NamA2CalibrationAssetsResponse,
+        tags=["benchmark"],
+    )
+    async def nam_a2_calibration_assets(
+        platform: Annotated[str, Query()],
+    ) -> NamA2CalibrationAssetsResponse:
+        runner = NAM_A2_CALIBRATION_RUNNERS.get(platform)
+        if runner is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                f"native NAM-A2 calibration is not available for {platform}",
+            )
+        filename, sha256 = runner
+        return NamA2CalibrationAssetsResponse(
+            version=NAM_A2_CALIBRATION_VERSION,
+            platform=platform,
+            runner_url=f"{NAM_A2_CALIBRATION_RELEASE_URL}/{filename}",
+            runner_sha256=sha256,
+            model_url=(
+                f"{selected_settings.public_base_url.rstrip('/')}"
+                "/api/v1/calibration/nam-a2-full/model"
+            ),
+            model_sha256=NAM_A2_CALIBRATION_MODEL_SHA256,
+            audio_seconds=NAM_A2_CALIBRATION_AUDIO_SECONDS,
+        )
+
+    @app.get("/api/v1/calibration/nam-a2-full/model", tags=["benchmark"])
+    async def download_nam_a2_calibration_model() -> Response:
+        value = await storage.get(NAM_A2_CALIBRATION_MODEL_KEY)
+        return Response(
+            content=value,
+            media_type="application/json",
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "ETag": NAM_A2_CALIBRATION_MODEL_SHA256,
+            },
         )
 
     @app.post(

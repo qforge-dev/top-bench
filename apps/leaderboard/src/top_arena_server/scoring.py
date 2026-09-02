@@ -489,7 +489,7 @@ class ScoringService:
                 .where(RunCase.run_id == run.id, RunCase.status == "completed")
             )
         ).all()
-        run.metrics = aggregate_metrics(rows)
+        run.metrics = aggregate_metrics(rows, nam_a2_realtime_x=run.nam_a2_realtime_x)
         run.status = "completed"
         run.completed_at = now_utc()
         session.add(
@@ -533,7 +533,11 @@ def _summary(values: Sequence[float], *, higher_is_better: bool = False) -> dict
     }
 
 
-def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
+def aggregate_metrics(
+    rows: Sequence[RunCase],
+    *,
+    nam_a2_realtime_x: float | None = None,
+) -> dict[str, Any]:
     result: dict[str, Any] = {
         "contract": {
             "version": "top-arena-audio-v3",
@@ -582,6 +586,15 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             higher_is_better=True,
         ),
     }
+    if nam_a2_realtime_x is not None and nam_a2_realtime_x > 0:
+        result["nam_a2_speed_ratio"] = _summary(
+            [value / nam_a2_realtime_x for row in rows if (value := row.realtime_x) is not None],
+            higher_is_better=True,
+        )
+        result["speed_calibration"] = {
+            "basis": "local native NeuralAmpModelerCore NAM-A2-FULL inference",
+            "nam_a2_realtime_x": nam_a2_realtime_x,
+        }
     nam_rows = [row for row in rows if row.nam_esr is not None]
     result["nam_a2_full"] = {
         "available_cases": len(nam_rows),
@@ -599,5 +612,8 @@ def aggregate_metrics(rows: Sequence[RunCase]) -> dict[str, Any]:
             higher_is_better=True,
         ),
     }
-    result["diagnostics"] = aggregate_diagnostics(rows)
+    result["diagnostics"] = aggregate_diagnostics(
+        rows,
+        nam_a2_realtime_x=nam_a2_realtime_x,
+    )
     return result

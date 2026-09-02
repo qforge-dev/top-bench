@@ -145,6 +145,7 @@
       humanWeightedEsr: metric(source, "human_weighted_esr", "humanWeightedEsr"),
       mrstft: metric(source, "mrstft"),
       realtime: metric(source, "realtime_x", "realtimeX"),
+      namA2SpeedRatio: metric(source, "nam_a2_speed_ratio", "namA2SpeedRatio"),
       namA2Full: {
         esr: metric(namSource, "esr"),
         humanWeightedEsr: metric(namSource, "human_weighted_esr", "humanWeightedEsr"),
@@ -297,6 +298,20 @@
     return cell;
   }
 
+  function speedCell(run) {
+    const cell = createElement("td", "numeric-cell");
+    cell.dataset.label = "Speed vs NAM-A2";
+    if (run.namA2SpeedRatio.mean !== null) {
+      cell.append(createElement("strong", "", `${formatScore(run.namA2SpeedRatio.mean)}× NAM-A2`));
+      if (run.realtime.mean !== null) {
+        cell.append(createElement("small", "", `${formatScore(run.realtime.mean)}× realtime`));
+      }
+    } else {
+      cell.textContent = run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}× realtime`;
+    }
+    return cell;
+  }
+
   function startedCell(value) {
     const cell = createElement("td", "timestamp-cell");
     cell.dataset.label = "Started (UTC)";
@@ -363,7 +378,7 @@
       positions: run.positions,
       positionsPerControl: run.positionsPerControl,
       rank: ranks.get(run.id) ?? null,
-      realtime: run.realtime.mean,
+      realtime: run.namA2SpeedRatio.mean,
       started: run.createdAt ? Date.parse(run.createdAt) : null,
       status: run.totalCases > 0 ? run.completedCases / run.totalCases : 0,
     };
@@ -460,7 +475,7 @@
           "numeric-cell",
         ),
         startedCell(run.createdAt),
-        simpleCell("Realtime", run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}×`, "numeric-cell"),
+        speedCell(run),
         metricCell("ESR", run.esr, run.namA2Full.esr),
         metricCell("Human-weighted ESR", run.humanWeightedEsr, run.namA2Full.humanWeightedEsr),
         metricCell("MRSTFT", run.mrstft, run.namA2Full.mrstft),

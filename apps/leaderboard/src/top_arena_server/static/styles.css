@@ -840,6 +840,17 @@ td > strong {
   font-weight: 700;
 }
 
+.numeric-cell > strong,
+.numeric-cell > small {
+  display: block;
+  white-space: nowrap;
+}
+
+.numeric-cell > small {
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
 .status {
   display: inline-flex;
   min-height: 22px;
