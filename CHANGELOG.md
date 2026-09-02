@@ -6,6 +6,9 @@
   NeuralAmpModelerCore runners. Runs now report candidate speed relative to NAM-A2 on
   the same machine while retaining absolute realtime, and concurrent processes share a
   five-minute calibration cache.
+- Added the `blackface63-less-simple` benchmark with a sampled Master control while
+  keeping Reverb and Bright disabled, including calibrated BIAS X references and NAM
+  A2 baselines.
 - Deduplicated dry-input downloads across concurrent local processes with a shared
   filesystem lock, and made uploads resilient to longer proxy and deployment outages.
 - Changed server scoring to round-robin fairly across active runs and use multiple

@@ -14,6 +14,7 @@ from .process import s3_upload, sha256, write_json
 BLACKFACE_63_AMP_ID = "D3D21964-8E80-11EE-B9D1-0242AC120002"
 BLACKFACE_63_SIMPLE_AMP_ID = "blackface63-simple"
 BLACKFACE_63_SIMPLE_QUIET_AMP_ID = "blackface63-simple-quiet"
+BLACKFACE_63_LESS_SIMPLE_AMP_ID = "blackface63-less-simple"
 GENOME_SIMPLE_MODELS = (
     ("genome-artisan-100-ch1-simple", "Artisan 100 Ch1"),
     ("genome-brit1959-ch1-simple", "Brit1959 Ch1"),
@@ -273,6 +274,23 @@ def generate_settings(config: CorpusConfig, *, upload: bool = True) -> Path:
                 output_db=-5.7,
                 output_raw=0.705,
             ),
+        )
+    )
+    less_simple = _derive_fixed_amp(
+        blackface,
+        amp_id=BLACKFACE_63_LESS_SIMPLE_AMP_ID,
+        amp_name=BLACKFACE_63_LESS_SIMPLE_AMP_ID,
+        amp_index=next_amp_index + 12,
+        fixed_controls={"Bright": 0.0},
+    )
+    amps.append(
+        _derive_output_calibrated_amp(
+            less_simple,
+            amp_id=BLACKFACE_63_LESS_SIMPLE_AMP_ID,
+            amp_name=BLACKFACE_63_LESS_SIMPLE_AMP_ID,
+            amp_index=next_amp_index + 12,
+            output_db=-2.0,
+            output_raw=46.0 / 60.0,
         )
     )
     amps.extend(

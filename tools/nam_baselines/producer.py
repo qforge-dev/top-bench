@@ -12,7 +12,11 @@ import numpy as np
 import soundfile as sf
 
 from tools.reference_corpus.process import s3_upload, sha256, write_json
-from tools.reference_corpus.render import _chain_for_amp, _load_mapper
+from tools.reference_corpus.render import (
+    _chain_for_amp,
+    _load_mapper,
+    _set_renderer_output_level,
+)
 from tools.reference_corpus.settings import resolve_amps_for_renderer
 
 from .config import NamBaselineConfig
@@ -154,6 +158,7 @@ def produce(
         thread_name_prefix="training-capture-upload",
     ) as uploads:
         for amp in amps:
+            _set_renderer_output_level(plugin, amp)
             for position in list(amp["positions"])[:position_limit]:
                 job_id = f"{amp['amp_id']}--{position['position_id']}"
                 if state.contains(job_id):

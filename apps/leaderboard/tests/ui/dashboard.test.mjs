@@ -177,11 +177,18 @@ test("amp set defaults to normal and switches graph, list, and amp picker togeth
         "blackface63-simple-quiet",
         "Blackface 63 Simple Quiet",
       ),
+      run(
+        "run-less-simple",
+        "Less Simple Model",
+        "blackface63-less-simple",
+        "Blackface 63 Less Simple",
+      ),
     ],
     amps: [
       { id: "pg-clean", name: "PG Clean", amp_type: "guitar", control_names: [] },
       { id: "blackface63-simple", name: "Blackface 63 Simple", amp_type: "guitar", control_names: [] },
       { id: "blackface63-simple-quiet", name: "Blackface 63 Simple Quiet", amp_type: "guitar", control_names: [] },
+      { id: "blackface63-less-simple", name: "Blackface 63 Less Simple", amp_type: "guitar", control_names: [] },
     ],
   };
   const dom = new JSDOM(markup(payload), {
@@ -207,19 +214,20 @@ test("amp set defaults to normal and switches graph, list, and amp picker togeth
   scope.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   assert.deepEqual(
     [...document.querySelectorAll("#leaderboard-body tr")].map((row) => row.dataset.runId),
-    ["run-simple-quiet", "run-simple"],
+    ["run-less-simple", "run-simple-quiet", "run-simple"],
   );
-  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 2);
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 3);
   assert.deepEqual([...amp.options].map((option) => option.value), [
     "",
+    "blackface63-less-simple",
     "blackface63-simple",
     "blackface63-simple-quiet",
   ]);
 
   scope.value = "all";
   scope.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  assert.equal(document.querySelectorAll("#leaderboard-body tr").length, 3);
-  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 3);
+  assert.equal(document.querySelectorAll("#leaderboard-body tr").length, 4);
+  assert.equal(document.querySelectorAll("#pareto-chart .run-point").length, 4);
 
   document.querySelector("#clear-filters").click();
   assert.equal(scope.value, "normal");

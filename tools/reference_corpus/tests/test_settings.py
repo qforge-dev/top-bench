@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import numpy as np
 
+from tools.reference_corpus.config import CorpusConfig
 from tools.reference_corpus.settings import (
     _build_genome_amps,
     _build_positions,
     _derive_fixed_amp,
     _derive_output_calibrated_amp,
     _maximin_latin_hypercube,
+    generate_settings,
     resolve_amps_for_renderer,
 )
 
@@ -172,3 +175,101 @@ def test_renderer_selection_filters_all_and_rejects_explicit_wrong_renderer() ->
     ]
     with np.testing.assert_raises_regex(ValueError, "genome-paradex"):
         resolve_amps_for_renderer(manifest, ["genome"], "bias-x")
+
+
+def test_generated_less_simple_blackface_samples_master_but_not_reverb_or_bright(
+    tmp_path,
+) -> None:
+    report = tmp_path / "report.json"
+    plan = tmp_path / "plan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "amp_id": "D3D21964-8E80-11EE-B9D1-0242AC120002",
+                        "amp": "Blackface 63",
+                        "series": "American Series",
+                        "category": "LowGainClean",
+                        "hidden": False,
+                        "controls": [
+                            "Volume",
+                            "Bass",
+                            "Middle",
+                            "Treble",
+                            "Reverb",
+                            "Master",
+                            "Bright",
+                        ],
+                        "settings": {
+                            "default": {"values": [0.75, 0.65, 0.385, 0.3, 0.0, 0.3, 0.01]}
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    plan.write_text(
+        json.dumps(
+            {
+                "settings": [
+                    {
+                        "amp_catalog_index": 19,
+                        "amp_id": "D3D21964-8E80-11EE-B9D1-0242AC120002",
+                        "controls": [
+                            {
+                                "index": 0,
+                                "name": "Volume",
+                                "kind": "knob",
+                                "sampling": "uniform_0_1",
+                            },
+                            {"index": 1, "name": "Bass", "kind": "knob", "sampling": "uniform_0_1"},
+                            {
+                                "index": 2,
+                                "name": "Middle",
+                                "kind": "knob",
+                                "sampling": "uniform_0_1",
+                            },
+                            {
+                                "index": 3,
+                                "name": "Treble",
+                                "kind": "knob",
+                                "sampling": "uniform_0_1",
+                            },
+                            {
+                                "index": 4,
+                                "name": "Reverb",
+                                "kind": "knob",
+                                "sampling": "fixed_time_effect_bypass",
+                            },
+                            {
+                                "index": 5,
+                                "name": "Master",
+                                "kind": "knob",
+                                "sampling": "uniform_0_1",
+                            },
+                            {
+                                "index": 6,
+                                "name": "Bright",
+                                "kind": "singleSwitch",
+                                "sampling": "uniform_discrete",
+                                "choices": [0.0, 1.0],
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    config = CorpusConfig(root=tmp_path / "corpus", amp_report=report, old_capture_plan=plan)
+
+    manifest = json.loads(generate_settings(config, upload=False).read_text())
+    amp = next(row for row in manifest["amps"] if row["amp_id"] == "blackface63-less-simple")
+
+    assert amp["renderer_amp_id"] == "D3D21964-8E80-11EE-B9D1-0242AC120002"
+    assert amp["fixed_controls"] == {"Bright": 0.0}
+    assert amp["renderer_output_db"] == -2.0
+    assert amp["renderer_output_raw"] == 46.0 / 60.0
+    assert {position["values"]["Reverb"] for position in amp["positions"]} == {0.0}
+    assert {position["values"]["Bright"] for position in amp["positions"]} == {0.0}
+    assert len({position["values"]["Master"] for position in amp["positions"]}) == 10

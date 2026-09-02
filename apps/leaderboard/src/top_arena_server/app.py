@@ -58,6 +58,7 @@ SIMPLE_AMP_IDS = frozenset(
     {
         "blackface63-simple",
         "blackface63-simple-quiet",
+        "blackface63-less-simple",
         "genome-artisan-100-ch1-simple",
         "genome-brit1959-ch1-simple",
         "genome-calibro-normal-simple",

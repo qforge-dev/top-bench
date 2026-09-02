@@ -39,10 +39,11 @@ def _run(index: int, *, amp_id: str, creator: str) -> BenchmarkRun:
     )
 
 
-def test_simple_amp_set_includes_quiet_training_level_variant() -> None:
+def test_simple_amp_set_includes_all_blackface_and_genome_variants() -> None:
     assert {
         "blackface63-simple",
         "blackface63-simple-quiet",
+        "blackface63-less-simple",
         "genome-artisan-100-ch1-simple",
         "genome-brit1959-ch1-simple",
         "genome-calibro-normal-simple",
