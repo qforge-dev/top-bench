@@ -20,11 +20,13 @@ function run(id, name, esr, realtime, budget) {
     unique_positions_used: 165,
     created_at: "2026-08-31T12:34:56Z",
     audio_duration_sum: budget,
+    nam_a2_realtime_x: 10,
     metrics: {
       esr: { mean: esr },
       human_weighted_esr: { mean: esr + 0.002 },
       mrstft: { mean: 0.42 + esr },
       realtime_x: { mean: realtime },
+      nam_a2_speed_ratio: { mean: realtime / 10 },
       nam_a2_full: {
         esr: { mean: 0.0842 },
         human_weighted_esr: { mean: 0.0433 },
@@ -103,6 +105,13 @@ test("amp page scales model selection through a searchable table and chart tabs"
   assert.equal(
     selectedRow.querySelector('td[data-label="Started (UTC)"]').textContent,
     "31.08.2026 12:34",
+  );
+  const realtimeCell = selectedRow.querySelector('td[data-label="Realtime"]');
+  assert.equal(realtimeCell.querySelector(".metric-primary").textContent, "4.93×");
+  assert.equal(realtimeCell.querySelector(".metric-comparison").textContent, "49.3% ▼");
+  assert.equal(
+    realtimeCell.querySelector(".metric-comparison").title,
+    "49.3% of NAM-A2-FULL speed. Candidate 4.93× realtime; local NAM-A2 10× realtime.",
   );
 
   document.querySelector('[data-chart-mode="positions"]').click();

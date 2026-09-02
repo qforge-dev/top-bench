@@ -179,6 +179,25 @@ async def test_leaderboard_filters_and_sorts_before_paginating(tmp_path: Path) -
                 f"model-{index:02d}" for index in range(29, 19, -1)
             ]
 
+            fastest = (
+                await client.get(
+                    "/api/v1/leaderboard",
+                    params={
+                        "sort": "realtime",
+                        "direction": "desc",
+                        "amp_scope": "normal",
+                        "page_size": 5,
+                    },
+                )
+            ).json()
+            assert [run["name"] for run in fastest["runs"]] == [
+                "model-29",
+                "model-28",
+                "model-27",
+                "model-26",
+                "model-25",
+            ]
+
             leanest = (
                 await client.get(
                     "/api/v1/leaderboard",

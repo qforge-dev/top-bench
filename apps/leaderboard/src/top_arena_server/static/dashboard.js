@@ -146,6 +146,7 @@
       mrstft: metric(source, "mrstft"),
       realtime: metric(source, "realtime_x", "realtimeX"),
       namA2SpeedRatio: metric(source, "nam_a2_speed_ratio", "namA2SpeedRatio"),
+      namA2Realtime: finite(firstValue(source.nam_a2_realtime_x, source.namA2RealtimeX)),
       namA2Full: {
         esr: metric(namSource, "esr"),
         humanWeightedEsr: metric(namSource, "human_weighted_esr", "humanWeightedEsr"),
@@ -300,16 +301,39 @@
 
   function speedCell(run) {
     const cell = createElement("td", "numeric-cell");
-    cell.dataset.label = "Speed vs NAM-A2";
-    if (run.namA2SpeedRatio.mean !== null) {
-      cell.append(createElement("strong", "", `${formatScore(run.namA2SpeedRatio.mean)}× NAM-A2`));
-      if (run.realtime.mean !== null) {
-        cell.append(createElement("small", "", `${formatScore(run.realtime.mean)}× realtime`));
-      }
-    } else {
-      cell.textContent = run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}× realtime`;
-    }
+    cell.dataset.label = "Realtime";
+    cell.append(createElement(
+      "strong",
+      `metric-primary${run.realtime.mean === null ? " metric-empty" : ""}`,
+      run.realtime.mean === null ? "—" : `${formatScore(run.realtime.mean)}×`,
+    ));
+    const comparison = speedComparisonLabel(run);
+    const pill = createElement("span", `metric-comparison ${comparison.className}`, comparison.label);
+    pill.title = comparison.title;
+    pill.setAttribute("aria-label", comparison.title);
+    cell.append(pill);
     return cell;
+  }
+
+  function speedComparisonLabel(run) {
+    const ratio = run.namA2SpeedRatio.mean;
+    if (ratio === null) {
+      return {
+        label: "—",
+        title: "Local NAM-A2-FULL speed comparison unavailable.",
+        className: "",
+      };
+    }
+    const percentage = ratio * 100;
+    const candidate = run.realtime.mean === null ? "unavailable" : `${formatScore(run.realtime.mean)}× realtime`;
+    const baseline = run.namA2Realtime === null ? "unavailable" : `${formatScore(run.namA2Realtime)}× realtime`;
+    const title = `${percentage.toFixed(1)}% of NAM-A2-FULL speed. Candidate ${candidate}; local NAM-A2 ${baseline}.`;
+    if (ratio === 1) return { label: "100.0% =", title, className: "is-equal" };
+    return {
+      label: `${percentage.toFixed(1)}% ${ratio > 1 ? "▲" : "▼"}`,
+      title,
+      className: ratio > 1 ? "is-model-better" : "is-baseline-better",
+    };
   }
 
   function startedCell(value) {
@@ -378,7 +402,7 @@
       positions: run.positions,
       positionsPerControl: run.positionsPerControl,
       rank: ranks.get(run.id) ?? null,
-      realtime: run.namA2SpeedRatio.mean,
+      realtime: run.realtime.mean,
       started: run.createdAt ? Date.parse(run.createdAt) : null,
       status: run.totalCases > 0 ? run.completedCases / run.totalCases : 0,
     };

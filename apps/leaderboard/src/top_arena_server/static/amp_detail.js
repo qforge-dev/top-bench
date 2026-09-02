@@ -109,6 +109,7 @@
       mrstft: metric(source, "mrstft"),
       realtime: metric(source, "realtime_x", "realtimeX"),
       namA2SpeedRatio: metric(source, "nam_a2_speed_ratio", "namA2SpeedRatio"),
+      namA2Realtime: finite(firstValue(source.nam_a2_realtime_x, source.namA2RealtimeX)),
       baseline: {
         esr: metric(baselineSource, "esr"),
         weighted: metric(baselineSource, "human_weighted_esr", "humanWeightedEsr"),
@@ -221,16 +222,39 @@
 
   function speedCell(run) {
     const cell = createElement("td", "numeric-cell");
-    cell.dataset.label = "Speed vs NAM-A2";
-    if (run.namA2SpeedRatio !== null) {
-      cell.append(createElement("strong", "", `${formatNumber(run.namA2SpeedRatio, 2)}× NAM-A2`));
-      if (run.realtime !== null) {
-        cell.append(createElement("small", "", `${formatNumber(run.realtime, 2)}× realtime`));
-      }
-    } else {
-      cell.textContent = run.realtime === null ? "—" : `${formatNumber(run.realtime, 2)}× realtime`;
-    }
+    cell.dataset.label = "Realtime";
+    cell.append(createElement(
+      "strong",
+      `metric-primary${run.realtime === null ? " metric-empty" : ""}`,
+      run.realtime === null ? "—" : `${formatNumber(run.realtime)}×`,
+    ));
+    const comparison = speedComparisonLabel(run);
+    const pill = createElement("span", `metric-comparison ${comparison.className}`, comparison.label);
+    pill.title = comparison.title;
+    pill.setAttribute("aria-label", comparison.title);
+    cell.append(pill);
     return cell;
+  }
+
+  function speedComparisonLabel(run) {
+    const ratio = run.namA2SpeedRatio;
+    if (ratio === null) {
+      return {
+        label: "—",
+        title: "Local NAM-A2-FULL speed comparison unavailable.",
+        className: "",
+      };
+    }
+    const percentage = ratio * 100;
+    const candidate = run.realtime === null ? "unavailable" : `${formatNumber(run.realtime)}× realtime`;
+    const baseline = run.namA2Realtime === null ? "unavailable" : `${formatNumber(run.namA2Realtime)}× realtime`;
+    const title = `${percentage.toFixed(1)}% of NAM-A2-FULL speed. Candidate ${candidate}; local NAM-A2 ${baseline}.`;
+    if (ratio === 1) return { label: "100.0% =", title, className: "is-equal" };
+    return {
+      label: `${percentage.toFixed(1)}% ${ratio > 1 ? "▲" : "▼"}`,
+      title,
+      className: ratio > 1 ? "is-model-better" : "is-baseline-better",
+    };
   }
 
   function startedCell(value) {
@@ -342,9 +366,11 @@
       summaryStat("Amp rank", rank === null ? "—" : `#${rank} of ${rankedRuns().length}`, "by mean ESR"),
       summaryStat("Mean ESR", formatNumber(run.esr), esrDelta === null ? "comparison unavailable" : `${Math.abs(esrDelta).toFixed(1)}% vs NAM-A2-FULL`),
       summaryStat(
-        "Speed vs NAM-A2",
-        run.namA2SpeedRatio === null ? "—" : `${formatNumber(run.namA2SpeedRatio, 2)}×`,
-        run.realtime === null ? "higher is faster" : `${formatNumber(run.realtime, 2)}× realtime absolute`,
+        "Realtime",
+        run.realtime === null ? "—" : `${formatNumber(run.realtime)}×`,
+        run.namA2SpeedRatio === null
+          ? "NAM-A2 comparison unavailable"
+          : `${formatNumber(run.namA2SpeedRatio * 100, 1)}% of local NAM-A2 speed`,
       ),
       summaryStat("Cases", `${formatInteger(run.completedCases)} / ${formatInteger(run.totalCases)}`, run.status.replace(/[_-]+/g, " ")),
     );

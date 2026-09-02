@@ -22,6 +22,7 @@ function run(id, name, ampId, ampName) {
     description: `${ampName} model`,
     created_at: "2026-08-31T12:34:56Z",
     parameter_count: 1_000,
+    nam_a2_realtime_x: 8,
     status: "completed",
     total_cases: 50,
     completed_cases: 50,
@@ -30,6 +31,7 @@ function run(id, name, ampId, ampName) {
       human_weighted_esr: { mean: 0.2 },
       mrstft: { mean: 0.3 },
       realtime_x: { mean: 10 },
+      nam_a2_speed_ratio: { mean: 1.25 },
       nam_a2_full: {
         available_cases: 50,
         esr: { mean: 0.25 },
@@ -142,6 +144,13 @@ test("amp filter lists database amps and filters runs by amp id", async () => {
   assert.equal(
     selectedRow.querySelector('td[data-label="Started (UTC)"]').textContent,
     "31.08.2026 12:34",
+  );
+  const realtimeCell = selectedRow.querySelector('td[data-label="Realtime"]');
+  assert.equal(realtimeCell.querySelector(".metric-primary").textContent, "10×");
+  assert.equal(realtimeCell.querySelector(".metric-comparison").textContent, "125.0% ▲");
+  assert.equal(
+    realtimeCell.querySelector(".metric-comparison").title,
+    "125.0% of NAM-A2-FULL speed. Candidate 10× realtime; local NAM-A2 8× realtime.",
   );
   assert.equal(
     selectedRow.querySelector('td[data-label="Amp"] .amp-link').getAttribute("href"),

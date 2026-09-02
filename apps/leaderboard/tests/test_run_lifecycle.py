@@ -196,7 +196,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert 'id="amp-scope-filter"' in dashboard_response.text
             assert 'id="creator-filter"' in dashboard_response.text
             assert 'id="pareto-chart"' in dashboard_response.text
-            assert "/static/dashboard.js?v=20260901-query-state" in dashboard_response.text
+            assert "/static/dashboard.js?v=20260902-realtime-comparison" in dashboard_response.text
             assert 'id="leaderboard-pagination"' in dashboard_response.text
             assert 'id="page-previous"' in dashboard_response.text
             assert 'id="page-next"' in dashboard_response.text
@@ -211,6 +211,19 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                 dashboard_response.text,
             )
             assert 'data-label="Started (UTC)" class="timestamp-cell"' in dashboard_response.text
+            assert ">Realtime <" in dashboard_response.text
+            assert "Speed vs NAM-A2" not in dashboard_response.text
+            assert re.search(
+                r'data-label="Realtime" class="numeric-cell">\s*'
+                r'<strong class="metric-primary">\s*12\.5000\s*\N{MULTIPLICATION SIGN}</strong>\s*'
+                r'<span class="metric-comparison is-model-better"[^>]*>125\.0% ▲</span>',
+                dashboard_response.text,
+            )
+            assert (
+                "125.0% of NAM-A2-FULL speed. Candidate "
+                "12.5000\N{MULTIPLICATION SIGN} realtime; local NAM-A2 "
+                "10.0000\N{MULTIPLICATION SIGN} realtime." in dashboard_response.text
+            )
             assert 'class="amp-link" href="/amps/demo-bias-x"' in dashboard_response.text
             assert 'class="hero"' not in dashboard_response.text
             assert 'class="hero-stats"' not in dashboard_response.text
@@ -221,9 +234,7 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert "Demo Bias-X results · Top Arena" in amp_page_response.text
             assert "lifecycle-model" in amp_page_response.text
             assert 'data-amp-id="demo-bias-x"' in amp_page_response.text
-            assert (
-                "/static/amp_detail.js?v=20260901-efficient-leaderboard" in amp_page_response.text
-            )
+            assert "/static/amp_detail.js?v=20260902-realtime-comparison" in amp_page_response.text
             assert ">Amp params<" in amp_page_response.text
             assert ">Pos / param<" in amp_page_response.text
             assert ">Started (UTC)<" in amp_page_response.text

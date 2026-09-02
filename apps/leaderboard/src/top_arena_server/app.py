@@ -379,7 +379,7 @@ async def _leaderboard_runs(
         "positions": lambda run: run.unique_positions_used,
         "esr": lambda run: metric_value(run, "esr"),
         "mrstft": lambda run: metric_value(run, "mrstft"),
-        "speed": lambda run: metric_value(run, "nam_a2_speed_ratio"),
+        "speed": lambda run: metric_value(run, "realtime_x"),
         "created": lambda run: run.created_at,
     }
     key = keys.get(sort_key, keys["esr"])
@@ -413,8 +413,8 @@ def _sort_leaderboard_runs(
         ),
         "started": lambda run: run.created_at,
         "created": lambda run: run.created_at,
-        "realtime": lambda run: _metric_mean(run, "nam_a2_speed_ratio"),
-        "speed": lambda run: _metric_mean(run, "nam_a2_speed_ratio"),
+        "realtime": lambda run: _metric_mean(run, "realtime_x"),
+        "speed": lambda run: _metric_mean(run, "realtime_x"),
         "esr": lambda run: _metric_mean(run, "esr"),
         "humanWeightedEsr": lambda run: _metric_mean(run, "human_weighted_esr"),
         "mrstft": lambda run: _metric_mean(run, "mrstft"),

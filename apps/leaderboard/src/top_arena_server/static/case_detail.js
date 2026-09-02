@@ -231,9 +231,11 @@
     const namSpeedRatio = metricMean(run, "nam_a2_speed_ratio");
     addDefinitionListItem(
       elements.runSummary,
-      "Speed vs NAM-A2",
-      namSpeedRatio === null ? "—" : `${formatNumber(namSpeedRatio, 2)}×`,
-      realtime === null ? "higher is faster" : `${formatNumber(realtime, 2)}× realtime absolute`,
+      "Realtime",
+      realtime === null ? "—" : `${formatNumber(realtime, 2)}×`,
+      namSpeedRatio === null
+        ? "NAM-A2 comparison unavailable"
+        : `${formatNumber(namSpeedRatio * 100, 1)}% of local NAM-A2 speed`,
     );
     addDefinitionListItem(elements.runSummary, "Positions", formatCompact(run.unique_positions_used), "unique settings");
     const completed = finite(run.completed_cases) ?? 0;
