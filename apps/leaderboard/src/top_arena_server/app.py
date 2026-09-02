@@ -81,11 +81,26 @@ NAM_A2_CALIBRATION_RELEASE_URL = (
     "https://github.com/qforge-dev/top-bench/releases/download/native-nam-calibration-v1"
 )
 NAM_A2_CALIBRATION_RUNNERS = {
-    "darwin-arm64": ("benchmodel-darwin-arm64", "PENDING"),
-    "darwin-x86_64": ("benchmodel-darwin-x86_64", "PENDING"),
-    "linux-arm64": ("benchmodel-linux-arm64", "PENDING"),
-    "linux-x86_64": ("benchmodel-linux-x86_64", "PENDING"),
-    "windows-x86_64": ("benchmodel-windows-x86_64.exe", "PENDING"),
+    "darwin-arm64": (
+        "benchmodel-darwin-arm64",
+        "d2bc233a05af90ac4a00b90ea543987b53ad057f97e90055cfae635f8f0582a2",
+    ),
+    "darwin-x86_64": (
+        "benchmodel-darwin-x86_64",
+        "9dd3e76b3a1a0b0bc16368ea8526f75d68f72313c6e471d6ecea9f7888348c76",
+    ),
+    "linux-arm64": (
+        "benchmodel-linux-arm64",
+        "380051e00ed5abae1a76daa6f255376a27dbc9a276be7b4ac09a7eaad15507a6",
+    ),
+    "linux-x86_64": (
+        "benchmodel-linux-x86_64",
+        "695df5423cdc4c33d2a1d3ae61be2e0a5b84a6569dbbf7c6a35500b3d658b741",
+    ),
+    "windows-x86_64": (
+        "benchmodel-windows-x86_64.exe",
+        "79c031fd5cddc70fe2fe1af72e6ebf1ebef68513749fbeceb78f4e1424c0d25c",
+    ),
 }
 
 
