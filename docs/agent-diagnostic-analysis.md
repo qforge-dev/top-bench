@@ -1,10 +1,11 @@
 # Agent-ready diagnostic analysis
 
 > Implementation status: `top-arena-case-diagnostics-v1` and
-> `top-arena-run-diagnostics-v6` implement signed fixed-band energy, signed global
+> `top-arena-run-diagnostics-v7` implement signed fixed-band energy, signed global
 > dynamics, dry-anchored attack/body/sustain regions, paired NAM log ratios with a
 > input-chunk cluster bootstrap, error concentration, condition associations, exact
-> control-setting and case evidence. Sections describing standardized
+> control-setting and case evidence, and nearest-training-position distance analysis.
+> Sections describing standardized
 > loudness, release/decay, gain curves, isolated control response, and calibrated probes
 > remain the next analysis-contract work rather than claims made by v1.
 

@@ -461,6 +461,240 @@ def _case_context(row: RunCase) -> dict[str, Any]:
     return context
 
 
+def _training_coverage_unavailable(
+    training_positions: Sequence[Sequence[float]],
+    reason: str,
+    *,
+    training_control_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "version": "top-arena-training-coverage-v1",
+        "available": False,
+        "reason": reason,
+        "training_position_count": len(training_positions),
+        "training_control_count": training_control_count,
+        "analyzed_settings": 0,
+        "skipped_settings": 0,
+        "distance_definition": {
+            "metric": "normalized_euclidean",
+            "formula": "sqrt(mean((measured_control - training_control)^2))",
+            "range": [0.0, 1.0],
+            "control_projection": "first N controls in amp-control order",
+            "sequence_aggregation": "mean of per-step nearest-training distances",
+        },
+        "esr_distance_correlation": {
+            "spearman_rho": None,
+            "pearson_r": None,
+            "settings": 0,
+            "available": False,
+            "reason": reason,
+            "basis": (
+                "one mean ESR per benchmark control setting; repeated dry-input chunks "
+                "do not increase the correlation sample count"
+            ),
+            "reading": "descriptive association only; correlation does not establish causation",
+        },
+        "positions": [],
+        "highest_esr_positions": [],
+    }
+
+
+def _coverage_correlation_reading(spearman_rho: float | None) -> str:
+    if spearman_rho is None:
+        return "correlation is not estimable from the available distinct settings"
+    magnitude = abs(spearman_rho)
+    if magnitude < 0.2:
+        strength = "little"
+    elif magnitude < 0.4:
+        strength = "weak"
+    elif magnitude < 0.7:
+        strength = "moderate"
+    else:
+        strength = "strong"
+    if spearman_rho > 0:
+        direction = "positive; mean ESR tended to increase farther from training coverage"
+    elif spearman_rho < 0:
+        direction = "negative; mean ESR tended to decrease farther from training coverage"
+    else:
+        direction = "no rank association between distance and mean ESR"
+    return f"{strength} {direction}; descriptive association only, not a causal effect"
+
+
+def training_coverage_diagnostics(  # noqa: PLR0912
+    rows: Sequence[RunCase],
+    training_positions: Sequence[Sequence[float]],
+) -> dict[str, Any]:
+    """Relate setting-level ESR to distance from exact declared training positions."""
+    if not training_positions:
+        return _training_coverage_unavailable(
+            training_positions,
+            "declared training positions are unavailable",
+        )
+
+    try:
+        training = np.asarray(training_positions, dtype=np.float64)
+    except (TypeError, ValueError):
+        return _training_coverage_unavailable(
+            training_positions,
+            "declared training positions are not a rectangular numeric matrix",
+        )
+    if training.ndim != 2 or training.shape[0] == 0 or training.shape[1] == 0:
+        return _training_coverage_unavailable(
+            training_positions,
+            "declared training positions are not a non-empty two-dimensional matrix",
+        )
+    training_control_count = int(training.shape[1])
+    if not np.isfinite(training).all():
+        return _training_coverage_unavailable(
+            training_positions,
+            "declared training positions contain non-finite values",
+            training_control_count=training_control_count,
+        )
+
+    grouped: dict[int, dict[str, Any]] = {}
+    skipped_settings: set[int] = set()
+    control_names: list[str] = []
+    for row in rows:
+        if row.esr is None:
+            continue
+        benchmark_case = _benchmark_case(row)
+        if benchmark_case is None:
+            continue
+        setting_id = int(benchmark_case.position_index) + 1
+        try:
+            matrix = np.asarray(benchmark_case.position_matrix, dtype=np.float64)
+        except (TypeError, ValueError):
+            skipped_settings.add(setting_id)
+            continue
+        if (
+            matrix.ndim != 2
+            or matrix.shape[0] == 0
+            or matrix.shape[1] < training_control_count
+            or not np.isfinite(matrix).all()
+        ):
+            skipped_settings.add(setting_id)
+            continue
+        if not control_names:
+            names = getattr(getattr(benchmark_case, "amp", None), "control_names", [])
+            control_names = [
+                str(names[index] if index < len(names) else f"control_{index + 1}")
+                for index in range(training_control_count)
+            ]
+        context = _case_context(row)
+        setting_context = {
+            key: context[key]
+            for key in ("control_setting_id", "controls", "control_sequence")
+            if key in context
+        }
+        group = grouped.setdefault(
+            setting_id,
+            {
+                "position_matrix": matrix[:, :training_control_count],
+                "context": setting_context,
+                "esr": [],
+            },
+        )
+        cast("list[float]", group["esr"]).append(float(row.esr))
+
+    positions: list[dict[str, Any]] = []
+    for setting_id, group in sorted(grouped.items()):
+        matrix = cast("NDArray[np.float64]", group["position_matrix"])
+        nearest_points: list[dict[str, Any]] = []
+        distances: list[float] = []
+        for step_index, measured in enumerate(matrix, start=1):
+            point_distances = np.sqrt(np.mean((training - measured) ** 2, axis=1))
+            nearest_index = int(np.argmin(point_distances))
+            distance = float(point_distances[nearest_index])
+            distances.append(distance)
+            nearest_vector = training[nearest_index]
+            nearest_points.append(
+                {
+                    "measured_step": step_index,
+                    "training_position_id": nearest_index + 1,
+                    "distance": distance,
+                    "training_position": [float(value) for value in nearest_vector],
+                    "controls": {
+                        name: float(nearest_vector[index])
+                        for index, name in enumerate(control_names)
+                    },
+                }
+            )
+        esr_values = cast("list[float]", group["esr"])
+        positions.append(
+            {
+                **cast("dict[str, Any]", group["context"]),
+                "control_setting_id": setting_id,
+                "case_count": len(esr_values),
+                "mean_esr": float(np.mean(esr_values)),
+                "nearest_training_distance": float(np.mean(distances)),
+                "maximum_nearest_training_distance": max(distances),
+                "nearest_training_points": nearest_points,
+            }
+        )
+
+    distance_values = np.asarray(
+        [float(position["nearest_training_distance"]) for position in positions],
+        dtype=np.float64,
+    )
+    setting_esr_values = np.asarray(
+        [float(position["mean_esr"]) for position in positions],
+        dtype=np.float64,
+    )
+    correlation_reason: str | None = None
+    if len(positions) < 3:
+        correlation_reason = "at least three measured benchmark settings are required"
+    elif len(np.unique(distance_values)) < 2:
+        correlation_reason = "all measured settings have the same nearest-training distance"
+    elif len(np.unique(setting_esr_values)) < 2:
+        correlation_reason = "all measured settings have the same mean ESR"
+
+    spearman_rho: float | None = None
+    pearson_r: float | None = None
+    if correlation_reason is None:
+        spearman_value = float(stats.spearmanr(distance_values, setting_esr_values).statistic)
+        pearson_value = float(stats.pearsonr(distance_values, setting_esr_values).statistic)
+        spearman_rho = spearman_value if math.isfinite(spearman_value) else None
+        pearson_r = pearson_value if math.isfinite(pearson_value) else None
+        if spearman_rho is None or pearson_r is None:
+            correlation_reason = "the correlation calculation did not produce finite values"
+
+    correlation = {
+        "spearman_rho": spearman_rho,
+        "pearson_r": pearson_r,
+        "settings": len(positions),
+        "available": spearman_rho is not None and pearson_r is not None,
+        "reason": correlation_reason,
+        "basis": (
+            "one mean ESR per benchmark control setting; repeated dry-input chunks "
+            "do not increase the correlation sample count"
+        ),
+        "reading": _coverage_correlation_reading(spearman_rho),
+    }
+    return {
+        "version": "top-arena-training-coverage-v1",
+        "available": bool(positions),
+        "reason": None if positions else "no scored benchmark settings could be compared",
+        "training_position_count": int(training.shape[0]),
+        "training_control_count": training_control_count,
+        "analyzed_settings": len(positions),
+        "skipped_settings": len(skipped_settings - set(grouped)),
+        "distance_definition": {
+            "metric": "normalized_euclidean",
+            "formula": "sqrt(mean((measured_control - training_control)^2))",
+            "range": [0.0, 1.0],
+            "control_projection": (f"first {training_control_count} controls in amp-control order"),
+            "sequence_aggregation": "mean of per-step nearest-training distances",
+        },
+        "esr_distance_correlation": correlation,
+        "positions": positions,
+        "highest_esr_positions": sorted(
+            positions,
+            key=lambda position: float(position["mean_esr"]),
+            reverse=True,
+        )[:5],
+    }
+
+
 def _cluster_bootstrap_log_ratio(
     pairs: Sequence[tuple[int, float]],
 ) -> list[float] | None:
@@ -1086,6 +1320,7 @@ def aggregate_diagnostics(
     rows: Sequence[RunCase],
     *,
     nam_a2_realtime_x: float | None = None,
+    training_positions: Sequence[Sequence[float]] = (),
 ) -> dict[str, Any]:
     """Aggregate per-case diagnostics into a self-contained agent evidence packet."""
     available = [row for row in rows if isinstance((row.analysis or {}).get("diagnostics"), dict)]
@@ -1096,7 +1331,7 @@ def aggregate_diagnostics(
     associations = _associations(available)
     speed = _speed_assessment(rows, nam_a2_realtime_x=nam_a2_realtime_x)
     return {
-        "version": "top-arena-run-diagnostics-v6",
+        "version": "top-arena-run-diagnostics-v7",
         "coverage": {
             "diagnostic_cases": len(available),
             "total_cases": len(rows),
@@ -1143,6 +1378,7 @@ def aggregate_diagnostics(
         "phases": phases,
         "error_concentration": concentration,
         "condition_associations": associations,
+        "training_coverage": training_coverage_diagnostics(rows, training_positions),
         "speed": speed,
         "findings": _findings(
             available,

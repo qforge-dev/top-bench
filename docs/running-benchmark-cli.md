@@ -114,6 +114,9 @@ The report performs the calculations before returning the result. It includes:
 - Dry-anchored attack timing and transient, early-body, and sustain summaries.
 - The number of cases carrying 25%, 50%, and 75% of summed case ESR.
 - Input/control associations with ESR, labeled descriptive rather than causal.
+- Setting-level nearest-training distances, Pearson and Spearman ESR/distance
+  correlations, and the five highest mean-ESR positions with their closest declared
+  training points.
 - Signal-qualified findings with complete case IDs, grouped control settings, input
   chunks, time bounds, frequency evidence, basis, and interpretation.
 - Setting-level parameter patterns such as “absolute upper-mid error increases with

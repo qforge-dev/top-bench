@@ -265,10 +265,14 @@ faster, and `0.8` is 20% slower. The acceptable diagnostic floor is half of the 
 NAM-A2 speed. If native calibration is unavailable on a platform, the run falls back to
 the legacy absolute measurement and records no normalized ratio.
 
-When the server provides diagnostic contract `top-arena-run-diagnostics-v6`,
+When the server provides diagnostic contract `top-arena-run-diagnostics-v7`,
 `result.metrics["diagnostics"]` also contains signed level and band measurements,
 attack/body/sustain summaries, paired NAM comparisons, ESR concentration,
-control-setting relationships, strengths, and signal-qualified significant findings.
+control-setting relationships, training-position distance analysis, strengths, and
+signal-qualified significant findings. The training-coverage packet reports normalized
+Euclidean distance to the nearest declared training point for every measured setting,
+Pearson and Spearman correlations with mean setting ESR, and the five highest-ESR
+settings with their nearest points.
 The structured `findings` object contains `strengths` and `significant`; it contains
 no `action` field.
 

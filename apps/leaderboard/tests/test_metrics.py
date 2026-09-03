@@ -207,13 +207,78 @@ def test_realtime_summary_treats_more_realtime_x_as_better() -> None:
         "hop_seconds": 0.1,
         "dbfs_floor": -120.0,
     }
-    assert metrics["contract"]["diagnostics"]["run_version"] == ("top-arena-run-diagnostics-v6")
+    assert metrics["contract"]["diagnostics"]["run_version"] == ("top-arena-run-diagnostics-v7")
     assert metrics["level_db"]["best"] == 1.0
     assert metrics["level_db"]["worst"] == 4.0
     assert metrics["peak_db"]["best"] == 2.0
     assert metrics["peak_db"]["worst"] == 8.0
     assert metrics["correlation"]["best"] == 1.0
     assert metrics["correlation"]["worst"] == 0.25
+
+
+def test_training_coverage_relates_setting_esr_to_nearest_training_position() -> None:
+    amp = Amp(
+        id="coverage-amp",
+        name="Coverage Amp",
+        amp_type="guitar",
+        control_names=["gain", "tone", "fixed_switch"],
+    )
+    rows = []
+    for position_index, value in enumerate((0.0, 0.25, 0.5, 0.75, 1.0)):
+        for chunk_index, addition in enumerate((0.1, 0.2)):
+            benchmark_case = BenchmarkCase(
+                id=f"coverage-{chunk_index}-{position_index}",
+                amp=amp,
+                amp_id=amp.id,
+                chunk_index=chunk_index,
+                position_index=position_index,
+                position_matrix=[[value, value, 0.0]],
+                dry_key=f"dry-{chunk_index}.wav",
+                dry_sha256=f"hash-{chunk_index}",
+                reference_wet_key="reference.wav",
+                duration_seconds=1.0,
+            )
+            rows.append(
+                RunCase(
+                    run_id="run",
+                    benchmark_case_id=benchmark_case.id,
+                    benchmark_case=benchmark_case,
+                    status="completed",
+                    esr=value + addition,
+                    analysis={},
+                )
+            )
+
+    metrics = aggregate_metrics(rows, training_positions=((0.0, 0.0),))
+    coverage = metrics["diagnostics"]["training_coverage"]
+
+    assert coverage["version"] == "top-arena-training-coverage-v1"
+    assert coverage["available"] is True
+    assert coverage["training_position_count"] == 1
+    assert coverage["training_control_count"] == 2
+    assert coverage["analyzed_settings"] == 5
+    assert coverage["distance_definition"]["control_projection"] == (
+        "first 2 controls in amp-control order"
+    )
+    correlation = coverage["esr_distance_correlation"]
+    assert correlation["settings"] == 5
+    assert correlation["spearman_rho"] == pytest.approx(1.0)
+    assert correlation["pearson_r"] == pytest.approx(1.0)
+    highest = coverage["highest_esr_positions"][0]
+    assert highest["control_setting_id"] == 5
+    assert highest["controls"] == {"gain": 1.0, "tone": 1.0, "fixed_switch": 0.0}
+    assert highest["case_count"] == 2
+    assert highest["mean_esr"] == pytest.approx(1.15)
+    assert highest["nearest_training_distance"] == pytest.approx(1.0)
+    assert highest["nearest_training_points"] == [
+        {
+            "measured_step": 1,
+            "training_position_id": 1,
+            "distance": 1.0,
+            "training_position": [0.0, 0.0],
+            "controls": {"gain": 0.0, "tone": 0.0},
+        }
+    ]
 
 
 def test_case_diagnostics_preserve_the_sign_and_frequency_of_a_tonal_difference() -> None:
@@ -352,7 +417,7 @@ def test_run_diagnostics_report_paired_baseline_without_duplicate_loss_count() -
     assert "candidate_worse_cases" not in paired
     assert diagnostics["error_concentration"]["cases_for_50_percent"] == 1
     assert diagnostics["findings"]["strengths"][0]["evidence_level"] == "derived"
-    assert diagnostics["version"] == "top-arena-run-diagnostics-v6"
+    assert diagnostics["version"] == "top-arena-run-diagnostics-v7"
     assert "unsupported" not in diagnostics
 
 

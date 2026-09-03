@@ -36,6 +36,37 @@ def _result() -> BenchmarkResult:
                     "cases_for_50_percent": 1,
                     "top_5_share": 1.0,
                 },
+                "training_coverage": {
+                    "available": True,
+                    "distance_definition": {
+                        "control_projection": "first 1 controls in amp-control order",
+                    },
+                    "esr_distance_correlation": {
+                        "spearman_rho": 0.8,
+                        "pearson_r": 0.75,
+                        "settings": 5,
+                        "reading": (
+                            "strong positive; mean ESR tended to increase farther from "
+                            "training coverage; descriptive association only, not a causal effect"
+                        ),
+                    },
+                    "highest_esr_positions": [
+                        {
+                            "control_setting_id": 4,
+                            "controls": {"gain": 0.9},
+                            "case_count": 3,
+                            "mean_esr": 0.3,
+                            "nearest_training_distance": 0.4,
+                            "maximum_nearest_training_distance": 0.4,
+                            "nearest_training_points": [
+                                {
+                                    "training_position_id": 2,
+                                    "controls": {"gain": 0.5},
+                                }
+                            ],
+                        }
+                    ],
+                },
                 "speed": {
                     "status": "acceptable",
                     "cases": 3,
@@ -137,6 +168,10 @@ def test_agent_report_emits_one_dot_per_newly_scored_case_and_complete_evidence(
     assert "Second experiment" not in report
     assert "signal >= 1x; strongest first" in report
     assert "SIGNIFICANT FINDINGS" in report
+    assert "TRAINING COVERAGE" in report
+    assert "Spearman rho +0.800; Pearson r +0.750 across 5 benchmark settings" in report
+    assert "gain=0.90 (setting 4) | mean ESR 0.3000 over 3 cases" in report
+    assert "nearest-training distance 0.4000 | training point 2: gain=0.50" in report
     assert "Next step:" not in report
     assert "NAM-FULL target 31x, acceptable floor 15.5x" in report
     assert "[ACCEPTABLE]" in report
@@ -151,7 +186,14 @@ def test_json_report_is_only_the_result_object() -> None:
     reporter.update(RunSnapshot("run-123", "completed", 3, 3, _result()))
     reporter.finish(_result())
 
-    assert json.loads(stdout.getvalue())["run_id"] == "run-123"
+    payload = json.loads(stdout.getvalue())
+    assert payload["run_id"] == "run-123"
+    assert (
+        payload["metrics"]["diagnostics"]["training_coverage"]["esr_distance_correlation"][
+            "spearman_rho"
+        ]
+        == 0.8
+    )
     assert "... 3/3" in stderr.getvalue()
 
 

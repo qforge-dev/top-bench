@@ -204,7 +204,11 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                 "training/chords.wav",
             ]
             assert corrected["description"] == "Corrected lifecycle metadata"
-            assert corrected["metrics"] == original_metrics
+            assert corrected["metrics"]["esr"] == original_metrics["esr"]
+            assert (
+                corrected["metrics"]["diagnostics"]["training_coverage"]["training_position_count"]
+                == 50
+            )
             cleared_override = await client.patch(
                 f"/api/v1/runs/{run_id}",
                 json={

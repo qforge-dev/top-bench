@@ -49,7 +49,7 @@ from .schemas import (
     WaveformResponse,
     WaveformSeriesResponse,
 )
-from .scoring import ScoringService, baseline_cache_signature
+from .scoring import ScoringService, aggregate_metrics, baseline_cache_signature
 from .storage import ObjectStorage, create_storage
 from .waveform import waveform_envelope
 
@@ -336,6 +336,25 @@ async def _update_run_metadata(
                         "to": new_position_count,
                     }
                     run.unique_positions_used = new_position_count
+                if "training_positions" in changes and run.status == "completed":
+                    scored_rows = (
+                        await session.scalars(
+                            select(RunCase)
+                            .options(
+                                joinedload(RunCase.benchmark_case).joinedload(BenchmarkCase.amp)
+                            )
+                            .where(
+                                RunCase.run_id == run.id,
+                                RunCase.status == "completed",
+                            )
+                        )
+                    ).all()
+                    run.metrics = aggregate_metrics(
+                        scored_rows,
+                        nam_a2_realtime_x=run.nam_a2_realtime_x,
+                        training_positions=prospective_positions,
+                    )
+                    changes["training_coverage"] = {"recomputed": True}
 
             if changes:
                 run.updated_at = now_utc()

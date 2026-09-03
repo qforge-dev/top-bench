@@ -489,7 +489,11 @@ class ScoringService:
                 .where(RunCase.run_id == run.id, RunCase.status == "completed")
             )
         ).all()
-        run.metrics = aggregate_metrics(rows, nam_a2_realtime_x=run.nam_a2_realtime_x)
+        run.metrics = aggregate_metrics(
+            rows,
+            nam_a2_realtime_x=run.nam_a2_realtime_x,
+            training_positions=run.training_positions,
+        )
         run.status = "completed"
         run.completed_at = now_utc()
         session.add(
@@ -537,6 +541,7 @@ def aggregate_metrics(
     rows: Sequence[RunCase],
     *,
     nam_a2_realtime_x: float | None = None,
+    training_positions: Sequence[Sequence[float]] = (),
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "contract": {
@@ -551,7 +556,7 @@ def aggregate_metrics(
             },
             "diagnostics": {
                 "case_version": "top-arena-case-diagnostics-v1",
-                "run_version": "top-arena-run-diagnostics-v6",
+                "run_version": "top-arena-run-diagnostics-v7",
                 "display_bands_hz": [20, 80, 150, 400, 800, 2_000, 4_000, 8_000, 20_000],
                 "phase_windows_ms": {
                     "transient": [0, 50],
@@ -615,5 +620,6 @@ def aggregate_metrics(
     result["diagnostics"] = aggregate_diagnostics(
         rows,
         nam_a2_realtime_x=nam_a2_realtime_x,
+        training_positions=training_positions,
     )
     return result

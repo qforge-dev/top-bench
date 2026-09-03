@@ -2,6 +2,9 @@
 
 ## 0.4.0 — 2026-09-03
 
+- Added nearest-training-position distances for every measured control setting,
+  setting-level ESR/distance correlations, and highest-ESR coverage evidence to JSON
+  and agent reports.
 - Required exact training-position vectors and dry-file identifiers for every new run,
   derive the position count from those vectors, and show both provenance lists on run pages.
 - Added a native, non-ONNX NAM-A2-FULL speed calibration using pinned

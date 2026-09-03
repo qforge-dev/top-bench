@@ -61,6 +61,76 @@ def _setting_description(case: dict[str, Any]) -> str:
     )
 
 
+def _training_coverage_lines(diagnostics: dict[str, Any]) -> list[str]:
+    coverage = _mapping(diagnostics.get("training_coverage"))
+    if not coverage:
+        return []
+    lines = [
+        "",
+        "TRAINING COVERAGE  (distance to nearest declared training point; lower is closer)",
+    ]
+    if not coverage.get("available"):
+        lines.append(f"  Unavailable: {coverage.get('reason', 'no comparable settings')}.")
+        return lines
+
+    definition = _mapping(coverage.get("distance_definition"))
+    lines.append(
+        "  Normalized Euclidean distance over "
+        f"{definition.get('control_projection', 'the declared amp controls')} "
+        "(0 exact; 1 opposite in every compared control)."
+    )
+    correlation = _mapping(coverage.get("esr_distance_correlation"))
+    spearman = _number(correlation.get("spearman_rho"))
+    pearson = _number(correlation.get("pearson_r"))
+    settings = int(correlation.get("settings", 0))
+    if spearman is not None and pearson is not None:
+        lines.append(
+            f"  ESR vs distance: Spearman rho {spearman:+.3f}; Pearson r {pearson:+.3f} "
+            f"across {settings} benchmark settings."
+        )
+        if reading := correlation.get("reading"):
+            lines.append(f"  Reading: {reading}.")
+    else:
+        lines.append(
+            f"  ESR vs distance: not estimable across {settings} benchmark settings"
+            f" ({correlation.get('reason', 'insufficient variation')})."
+        )
+
+    highest = _items(coverage.get("highest_esr_positions"))
+    if highest:
+        lines.append("  Highest mean-ESR benchmark settings:")
+    for rank, position in enumerate(highest, start=1):
+        setting_id = position.get("control_setting_id")
+        setting = _setting_description(position)
+        label = f"setting {setting_id}" if setting_id is not None else "setting"
+        if setting:
+            label = f"{setting} ({label})"
+        mean_esr = _number(position.get("mean_esr"))
+        distance = _number(position.get("nearest_training_distance"))
+        if mean_esr is None or distance is None:
+            continue
+        case_count = int(position.get("case_count", 0))
+        parts = [
+            f"{rank}. {label}",
+            f"mean ESR {mean_esr:.4f} over {case_count} cases",
+            f"nearest-training distance {distance:.4f}",
+        ]
+        nearest_points = _items(position.get("nearest_training_points"))
+        maximum = _number(position.get("maximum_nearest_training_distance"))
+        if len(nearest_points) == 1:
+            nearest = nearest_points[0]
+            point_id = nearest.get("training_position_id")
+            nearest_controls = _controls(nearest.get("controls"))
+            point = f"training point {point_id}" if point_id is not None else "training point"
+            if nearest_controls:
+                point = f"{point}: {nearest_controls}"
+            parts.append(point)
+        elif maximum is not None:
+            parts.append(f"maximum step distance {maximum:.4f}")
+        lines.append(f"    {' | '.join(parts)}")
+    return lines
+
+
 def _case_line(  # noqa: PLR0912
     case: dict[str, Any], *, include_setting: bool = True
 ) -> str:
@@ -295,6 +365,8 @@ def _agent_report(  # noqa: PLR0912
         line = _metric_line(label, _mapping(metrics.get(key)), digits=digits)
         if line is not None:
             lines.append(line)
+
+    lines.extend(_training_coverage_lines(diagnostics))
 
     speed = _mapping(diagnostics.get("speed"))
     if speed:

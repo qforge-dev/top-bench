@@ -282,7 +282,7 @@ findings easy to act on.
 
 ## Extended diagnostic contracts
 
-`top-arena-case-diagnostics-v1` and `top-arena-run-diagnostics-v6` add measurements that
+`top-arena-case-diagnostics-v1` and `top-arena-run-diagnostics-v7` add measurements that
 explain likely sources and scope of the scalar error:
 
 - Signed candidate/reference level, sample peak, crest factor, and DC offset.
@@ -298,6 +298,9 @@ explain likely sources and scope of the scalar error:
 - Paired candidate/NAM log-ratio summaries with an input-chunk cluster bootstrap interval.
 - Error concentration, expressed as share of summed equally weighted case ESR.
 - Descriptive Spearman associations between ESR and input/control features.
+- Normalized Euclidean distance from every measured setting to its nearest declared
+  training position, with setting-level Pearson and Spearman associations to ESR. One
+  mean ESR is used per setting so repeated dry inputs do not inflate the sample count.
 
 These diagnostics preserve direction that the absolute `level_db` and `peak_db` scores
 discard. A positive signed band value means that the candidate has more energy than the
