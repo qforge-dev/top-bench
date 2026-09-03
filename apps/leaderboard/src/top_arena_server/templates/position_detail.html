@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0e13">
+    <title>{{ run_name }} · Position {{ "%02d"|format(position_id) }} · Top Arena</title>
+    <meta name="description" content="Position-level benchmark analysis for {{ run_name }}.">
+    <link rel="stylesheet" href="/static/styles.css?v=20260903-run-report">
+    <link rel="stylesheet" href="/static/run_overview.css?v=20260903-run-report">
+    <script defer src="/static/position_detail.js?v=20260903-run-report"></script>
+  </head>
+  <body class="report-page position-page">
+    <a class="skip-link" href="#position-report-content">Skip to position report</a>
+
+    <header class="site-header report-site-header">
+      <a class="brand" href="/" aria-label="Top Arena home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <path d="M6 25V11M12 29V7M18 24V12M24 27V9M30 22V14"></path>
+        </svg>
+        <span>TOP <b>ARENA</b></span>
+      </a>
+      <div class="report-header-actions">
+        <p class="report-started"><span>Started · UTC</span><time id="position-started" datetime="{{ run_started }}">{{ run_started_display }}</time></p>
+        <a class="report-back-link" href="/runs/{{ run_id }}"><span aria-hidden="true">←</span> Run report</a>
+      </div>
+    </header>
+
+    <main id="position-detail" class="report-main" data-run-id="{{ run_id }}" data-position-id="{{ position_id }}" aria-busy="true">
+      <section id="position-loading" class="report-state" aria-live="polite"><span class="report-loader" aria-hidden="true"></span><div><p class="report-kicker">Building position report</p><h1>Comparing dry-input responses…</h1></div></section>
+      <section id="position-error" class="report-state" role="alert" hidden><span class="report-state-mark" aria-hidden="true">!</span><div><p class="report-kicker">Position unavailable</p><h1>Could not load this setting</h1><p id="position-error-message">The report could not be loaded.</p><button id="retry-position" class="report-button" type="button">Try again</button></div></section>
+
+      <div id="position-report-content" hidden>
+        <nav class="report-crumbs" aria-label="Breadcrumb"><a href="/">Leaderboard</a><span>/</span><a id="position-run-link" href="/runs/{{ run_id }}">{{ run_name }}</a><span>/</span><strong>Position {{ "%02d"|format(position_id) }}</strong></nav>
+
+        <header class="report-hero position-hero">
+          <div class="report-identity">
+            <div class="report-label-row"><p class="report-kicker">Position report / setting {{ "%02d"|format(position_id) }}</p><span id="position-status" class="report-status">Loading</span></div>
+            <h1><span id="position-run-name">{{ run_name }}</span><em>Position <b id="position-number">{{ "%02d"|format(position_id) }}</b></em></h1>
+            <p id="position-summary" class="report-description">This setting is tested across every benchmark dry input.</p>
+          </div>
+          <div class="position-rank-card"><p>Highest-error position rank</p><strong id="position-rank">—</strong><span id="position-rank-copy">Waiting for scores</span></div>
+        </header>
+
+        <section class="position-controls-section" aria-labelledby="position-controls-title"><div><p class="report-kicker">Exact setting</p><h2 id="position-controls-title">Amp control values</h2></div><div id="position-controls" class="position-control-chips"></div></section>
+
+        <div id="position-insights" class="position-insights"></div>
+
+        <section class="report-section" aria-labelledby="position-distribution-title">
+          <header class="report-section-heading"><div><p class="report-kicker">01 / Position distribution</p><h2 id="position-distribution-title">Performance across dry inputs</h2></div><p>Each row summarizes this one setting over all of its cases</p></header>
+          <div class="report-table-frame" tabindex="0"><table class="report-table distribution-table"><thead><tr><th scope="col">Metric</th><th scope="col">Mean</th><th scope="col">Median</th><th scope="col">P90</th><th scope="col">Best</th><th scope="col">Worst</th><th scope="col">Run mean</th></tr></thead><tbody id="position-distribution-body"></tbody></table></div>
+        </section>
+
+        <section class="report-section position-neighborhood" aria-labelledby="neighborhood-title">
+          <header class="report-section-heading"><div><p class="report-kicker">02 / Training neighborhood</p><h2 id="neighborhood-title">Nearest declared training point</h2></div><p id="position-distance-label">Distance unavailable</p></header>
+          <div class="neighborhood-grid"><div><p id="neighborhood-reading" class="neighborhood-reading">Training coverage is being calculated.</p><dl id="neighborhood-facts" class="neighborhood-facts"></dl></div><div><h3>Closest training controls</h3><div id="nearest-training-controls" class="position-control-chips"></div></div></div>
+          <p id="neighborhood-empty" class="report-empty" hidden>No exact training-position metadata is available for this setting.</p>
+        </section>
+
+        <section class="report-section" aria-labelledby="position-chart-title">
+          <header class="report-section-heading"><div><p class="report-kicker">03 / Input sensitivity</p><h2 id="position-chart-title">ESR by dry input</h2></div><p>Bars are the model · markers are NAM-A2-FULL</p></header>
+          <div class="position-chart-shell"><svg id="position-case-chart" viewBox="0 0 1060 470" role="img" aria-labelledby="position-chart-title position-chart-summary"></svg><div id="position-chart-tooltip" class="report-tooltip" role="tooltip" hidden></div></div>
+          <p id="position-chart-summary" class="sr-only">Case ESR values for this position.</p>
+        </section>
+
+        <section class="report-section" aria-labelledby="position-cases-title">
+          <header class="report-section-heading"><div><p class="report-kicker">04 / Evidence cases</p><h2 id="position-cases-title">Dry files tested at this setting</h2></div><p>Open a case for waveform, audio, and windowed analysis</p></header>
+          <div class="report-table-frame report-case-frame" tabindex="0"><table class="report-table case-table"><thead><tr><th scope="col">Case</th><th scope="col">Dry input</th><th scope="col">Status</th><th scope="col">ESR</th><th scope="col">Weighted ESR</th><th scope="col">MRSTFT</th><th scope="col">Realtime</th><th scope="col"><span class="sr-only">Inspect</span></th></tr></thead><tbody id="position-case-body"></tbody></table></div>
+          <p id="position-cases-empty" class="report-empty" hidden>No cases are available for this position.</p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

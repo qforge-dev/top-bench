@@ -37,6 +37,8 @@ jobs:
         run: |
           node --check apps/leaderboard/src/top_arena_server/static/dashboard.js
           node --check apps/leaderboard/src/top_arena_server/static/case_detail.js
+          node --check apps/leaderboard/src/top_arena_server/static/run_overview.js
+          node --check apps/leaderboard/src/top_arena_server/static/position_detail.js
 
       - name: Test dashboard interactions
         run: npm run test:ui

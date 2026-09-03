@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0e13">
+    <title>{{ run_name }} · Run report · Top Arena</title>
+    <meta name="description" content="Aggregate benchmark report for {{ run_name }}.">
+    <link rel="stylesheet" href="/static/styles.css?v=20260903-run-report">
+    <link rel="stylesheet" href="/static/run_overview.css?v=20260903-run-report">
+    <script defer src="/static/run_overview.js?v=20260903-run-report"></script>
+  </head>
+  <body class="report-page">
+    <a class="skip-link" href="#run-report-content">Skip to run report</a>
+
+    <header class="site-header report-site-header">
+      <a class="brand" href="/" aria-label="Top Arena home">
+        <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <path d="M6 25V11M12 29V7M18 24V12M24 27V9M30 22V14"></path>
+        </svg>
+        <span>TOP <b>ARENA</b></span>
+      </a>
+      <div class="report-header-actions">
+        <p class="report-started">
+          <span>Started · UTC</span>
+          <time id="report-started" datetime="{{ run_started }}">{{ run_started_display }}</time>
+        </p>
+        <a class="report-back-link" href="/"><span aria-hidden="true">←</span> Leaderboard</a>
+      </div>
+    </header>
+
+    <main id="run-overview" class="report-main" data-run-id="{{ run_id }}" aria-busy="true">
+      <section id="report-loading" class="report-state" aria-live="polite">
+        <span class="report-loader" aria-hidden="true"></span>
+        <div><p class="report-kicker">Building run report</p><h1>Reading every scored case…</h1></div>
+      </section>
+
+      <section id="report-error" class="report-state" role="alert" hidden>
+        <span class="report-state-mark" aria-hidden="true">!</span>
+        <div>
+          <p class="report-kicker">Run report unavailable</p>
+          <h1>Could not load this benchmark</h1>
+          <p id="report-error-message">The report could not be loaded.</p>
+          <button id="retry-report" class="report-button" type="button">Try again</button>
+        </div>
+      </section>
+
+      <div id="run-report-content" hidden>
+        <header class="report-hero">
+          <div class="report-identity">
+            <div class="report-label-row">
+              <p class="report-kicker">Run report / aggregate</p>
+              <span id="report-status" class="report-status">Loading</span>
+            </div>
+            <h1 id="report-name">{{ run_name }}</h1>
+            <p class="report-byline">by <strong id="report-creator">—</strong> · tested on <a id="report-amp-link" href="#">—</a></p>
+            <p id="report-description" class="report-description">No run description supplied.</p>
+          </div>
+          <div class="report-progress-card">
+            <p>Scoring coverage</p>
+            <strong id="report-progress">— / —</strong>
+            <div class="report-progress-track"><i id="report-progress-fill"></i></div>
+            <span id="report-progress-copy">Waiting for scores</span>
+          </div>
+        </header>
+
+        <dl id="report-facts" class="report-facts" aria-label="Run metadata"></dl>
+
+        <section class="report-section report-score-section" aria-labelledby="score-title">
+          <header class="report-section-heading">
+            <div><p class="report-kicker">01 / Headline</p><h2 id="score-title">What happened overall</h2></div>
+            <p>Model scores use BIAS X as target · lower error is better</p>
+          </header>
+          <div id="headline-metrics" class="headline-metrics"></div>
+        </section>
+
+        <section class="report-section" aria-labelledby="distribution-title">
+          <header class="report-section-heading">
+            <div><p class="report-kicker">02 / Distribution</p><h2 id="distribution-title">Beyond the mean</h2></div>
+            <p>Median shows the typical case · P90 exposes the difficult tail</p>
+          </header>
+          <div class="report-table-frame" role="region" aria-label="Scrollable metric distribution table" tabindex="0">
+            <table class="report-table distribution-table">
+              <thead><tr><th scope="col">Metric</th><th scope="col">Mean</th><th scope="col">Median</th><th scope="col">P90</th><th scope="col">Best</th><th scope="col">Worst</th><th scope="col">NAM mean</th></tr></thead>
+              <tbody id="distribution-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="coverage-section" class="report-section coverage-section" aria-labelledby="coverage-title">
+          <header class="report-section-heading">
+            <div><p class="report-kicker">03 / Training coverage</p><h2 id="coverage-title">Does distance from training track error?</h2></div>
+            <p id="coverage-correlation">Waiting for position evidence</p>
+          </header>
+          <div class="coverage-layout">
+            <div class="coverage-chart-shell">
+              <svg id="coverage-chart" viewBox="0 0 960 470" role="img" aria-labelledby="coverage-title coverage-summary"></svg>
+              <div id="coverage-tooltip" class="report-tooltip" role="tooltip" hidden></div>
+            </div>
+            <aside class="coverage-reading">
+              <h3>Reading</h3>
+              <p id="coverage-summary">Training coverage is being calculated.</p>
+              <dl id="coverage-facts"></dl>
+              <a id="coverage-worst-link" class="report-inline-link" href="#">Open highest-error position <span aria-hidden="true">→</span></a>
+            </aside>
+          </div>
+          <p id="coverage-empty" class="report-empty" hidden>No comparable position-distance data is available for this run.</p>
+        </section>
+
+        <section class="report-section" aria-labelledby="findings-title">
+          <header class="report-section-heading">
+            <div><p class="report-kicker">04 / Diagnostic signals</p><h2 id="findings-title">Measured findings</h2></div>
+            <p>Evidence generated by the same contract used by the agent report</p>
+          </header>
+          <div id="findings-list" class="findings-list"></div>
+          <p id="findings-empty" class="report-empty" hidden>No significant diagnostic signals were found.</p>
+        </section>
+
+        <section id="positions" class="report-section" aria-labelledby="positions-title">
+          <header class="report-section-heading report-section-heading-tools">
+            <div><p class="report-kicker">05 / Position explorer</p><h2 id="positions-title">Where the model succeeds and struggles</h2></div>
+            <label class="report-control">Order positions <select id="position-sort"><option value="error-desc">Highest ESR first</option><option value="error-asc">Lowest ESR first</option><option value="distance-desc">Farthest from training</option><option value="id-asc">Position number</option></select></label>
+          </header>
+          <div class="report-table-frame report-tall-table" role="region" aria-label="Scrollable benchmark position table" tabindex="0">
+            <table class="report-table position-table">
+              <thead><tr><th scope="col">Position</th><th scope="col">Controls</th><th scope="col">Cases</th><th scope="col">Training distance</th><th scope="col">Mean ESR</th><th scope="col">Median</th><th scope="col">P90</th><th scope="col">Worst</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+              <tbody id="position-body"></tbody>
+            </table>
+          </div>
+          <p id="positions-empty" class="report-empty" hidden>No benchmark positions are available yet.</p>
+        </section>
+
+        <section id="cases" class="report-section" aria-labelledby="cases-title">
+          <header class="report-section-heading report-section-heading-tools">
+            <div><p class="report-kicker">06 / Case explorer</p><h2 id="cases-title">Every dry-input test</h2></div>
+            <div class="case-tools">
+              <label class="report-control">Position <select id="case-position-filter"><option value="all">All positions</option></select></label>
+              <label class="report-control">Order <select id="case-sort"><option value="index">Manifest order</option><option value="esr-desc">Highest ESR</option><option value="esr-asc">Lowest ESR</option><option value="speed-asc">Slowest first</option></select></label>
+              <label class="report-search"><span class="sr-only">Find a dry input</span><input id="case-search" type="search" placeholder="Find dry input" autocomplete="off"></label>
+            </div>
+          </header>
+          <div class="report-table-frame report-case-frame" role="region" aria-label="Scrollable benchmark case table" tabindex="0">
+            <table class="report-table case-table">
+              <thead><tr><th scope="col">Case</th><th scope="col">Dry input</th><th scope="col">Position</th><th scope="col">Status</th><th scope="col">ESR</th><th scope="col">Weighted ESR</th><th scope="col">MRSTFT</th><th scope="col">Realtime</th><th scope="col"><span class="sr-only">Inspect</span></th></tr></thead>
+              <tbody id="case-body"></tbody>
+            </table>
+          </div>
+          <div class="report-pagination"><button id="case-previous" type="button">← Previous</button><span id="case-page">—</span><button id="case-next" type="button">Next →</button></div>
+          <p id="cases-empty" class="report-empty" hidden>No cases match these filters.</p>
+        </section>
+
+        <section class="report-section provenance-section" aria-labelledby="provenance-title">
+          <header class="report-section-heading">
+            <div><p class="report-kicker">07 / Provenance</p><h2 id="provenance-title">What the model learned from</h2></div>
+            <p id="provenance-summary">Exact declared building blocks</p>
+          </header>
+          <p class="provenance-note">Training positions and dry files are independent lists; they do not imply one dry file per position.</p>
+          <div class="provenance-grid">
+            <section><h3>Training control positions</h3><div class="report-table-frame provenance-table-frame" tabindex="0"><table class="report-table provenance-table"><thead id="provenance-position-head"></thead><tbody id="provenance-position-body"></tbody></table></div><p id="provenance-positions-empty" class="report-empty" hidden>Not recorded for this legacy run.</p></section>
+            <section><h3>Training dry files</h3><ol id="provenance-files" class="provenance-files"></ol><p id="provenance-files-empty" class="report-empty" hidden>Not recorded for this legacy run.</p></section>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

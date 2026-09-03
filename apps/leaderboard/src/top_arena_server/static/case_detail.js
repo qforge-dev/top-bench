@@ -49,6 +49,7 @@
     namRunSummary: document.querySelector("#nam-run-summary"),
     next: document.querySelector("#next-case"),
     positions: document.querySelector("#position-chips"),
+    positionReportLink: document.querySelector("#position-report-link"),
     previous: document.querySelector("#previous-case"),
     playSequence: document.querySelector("#play-sequence"),
     referenceAudio: document.querySelector("#reference-audio"),
@@ -58,6 +59,7 @@
     runCreator: document.querySelector("#run-creator"),
     runDescription: document.querySelector("#run-description"),
     runName: document.querySelector("#run-name"),
+    runReportLink: document.querySelector("#run-report-link"),
     runStarted: document.querySelector("#run-started"),
     runStatus: document.querySelector("#run-status"),
     runSummary: document.querySelector("#run-summary"),
@@ -1083,6 +1085,12 @@
       titleCase(detail.status),
     ].filter(Boolean);
     setText(elements.caseMeta, parts.join(" · "));
+    const positionId = (finite(detail.position_index) ?? 0) + 1;
+    if (elements.positionReportLink) {
+      elements.positionReportLink.href = `/runs/${encodeURIComponent(state.runId)}/positions/${positionId}`;
+      elements.positionReportLink.textContent = `Position ${String(positionId).padStart(2, "0")} report →`;
+    }
+    if (elements.runReportLink) elements.runReportLink.href = `/runs/${encodeURIComponent(state.runId)}`;
   }
 
   function updateNavigation(detail) {

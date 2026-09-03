@@ -27,9 +27,9 @@
           <span>Benchmark started · UTC</span>
           <time id="run-started"{% if run_started %} datetime="{{ run_started }}"{% endif %}>{{ run_started_display|default("—", true) }}</time>
         </p>
-        <a class="back-link" href="/">
+        <a id="run-report-link" class="back-link" href="/runs/{{ run_id }}">
           <span aria-hidden="true">←</span>
-          Leaderboard
+          Run report
         </a>
       </div>
     </header>
@@ -102,6 +102,7 @@
             </section>
 
             <div class="sidebar-actions">
+              <a id="position-report-link" class="sidebar-action" href="/runs/{{ run_id }}/positions/1">Position report →</a>
               <a class="sidebar-action" href="/">← Leaderboard</a>
               <button id="delete-run" class="sidebar-delete" type="button">Delete result</button>
             </div>

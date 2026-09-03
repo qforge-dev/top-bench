@@ -81,6 +81,8 @@ jobs:
           npm ci --ignore-scripts
           node --check apps/leaderboard/src/top_arena_server/static/dashboard.js
           node --check apps/leaderboard/src/top_arena_server/static/case_detail.js
+          node --check apps/leaderboard/src/top_arena_server/static/run_overview.js
+          node --check apps/leaderboard/src/top_arena_server/static/position_detail.js
           npm run test:ui
 
   deploy:

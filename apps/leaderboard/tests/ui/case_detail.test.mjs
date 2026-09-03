@@ -138,6 +138,7 @@ function markup() {
     <main id="run-detail" data-run-id="run-1" data-case-id="case-a">
       <div id="detail-loading"></div><div id="detail-error" hidden></div><div id="detail-empty" hidden></div>
       <div id="detail-content" hidden>
+        <a id="run-report-link"></a><a id="position-report-link"></a>
         <span id="run-status"></span><h1 id="run-name"></h1><p id="run-description"></p><span id="run-creator"></span><span id="run-amp"></span>
         <button id="delete-run" type="button">Delete result</button>
         <div id="delete-run-dialog" role="dialog" aria-modal="true" hidden>
@@ -358,6 +359,8 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.equal(document.querySelector("#run-started").getAttribute("datetime"), "2026-08-31T12:34:56Z");
   assert.equal(document.querySelector("#run-started").textContent, "31.08.2026 12:34");
   assert.equal(document.title, "Velvet Drive · Case detail · Top Arena");
+  assert.equal(document.querySelector("#run-report-link").getAttribute("href"), "/runs/run-1");
+  assert.equal(document.querySelector("#position-report-link").getAttribute("href"), "/runs/run-1/positions/1");
   assert.match(document.querySelector("#run-summary").textContent, /Mean level Δ/);
   assert.match(document.querySelector("#run-summary").textContent, /Mean peak Δ/);
   assert.match(document.querySelector("#run-summary").textContent, /Mean correlation/);
@@ -491,6 +494,7 @@ test("arrows and select update the canonical URL and replace all case media", as
   await waitFor(() => assert.equal(document.querySelector("#case-position").textContent, "2 / 2"));
 
   assert.equal(window.location.pathname, "/runs/run-1/cases/case-b");
+  assert.equal(document.querySelector("#position-report-link").getAttribute("href"), "/runs/run-1/positions/2");
   assert.equal(document.querySelector("#candidate-audio").getAttribute("src"), "/audio/case-b/candidate.wav");
   assert.equal(document.querySelector("#next-case").disabled, true);
   assert.equal(requests.filter((url) => url.endsWith("/detail")).length, 2);

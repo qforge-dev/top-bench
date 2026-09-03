@@ -2,6 +2,9 @@
 
 ## 0.4.0 — 2026-09-03
 
+- Added human-oriented run and position reports with aggregate distributions, P90 tails,
+  training-distance/ESR plots, exact controls, dry-input sensitivity, and drill-down links
+  between the leaderboard, run, position, and case views.
 - Added nearest-training-position distances for every measured control setting,
   setting-level ESR/distance correlations, and highest-ESR coverage evidence to JSON
   and agent reports.

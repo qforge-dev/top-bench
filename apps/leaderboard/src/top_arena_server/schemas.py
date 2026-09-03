@@ -324,3 +324,57 @@ class RunCaseDetailResponse(ApiModel):
     url: str
     previous_url: str | None
     next_url: str | None
+
+
+class MetricDistributionResponse(ApiModel):
+    count: int
+    mean: float | None
+    median: float | None
+    p90: float | None
+    best: float | None
+    worst: float | None
+
+
+class RunExplorerCaseResponse(ApiModel):
+    case_id: str
+    index: int
+    chunk_index: int
+    position_index: int
+    position_id: int
+    status: str
+    duration_seconds: float
+    dry_file: str
+    metrics: RunCaseMetricsResponse
+    url: str
+    position_url: str
+
+
+class RunPositionSummaryResponse(ApiModel):
+    position_id: int
+    position_index: int
+    positions: list[list[float]]
+    control_names: list[str]
+    total_cases: int
+    completed_cases: int
+    esr_error_rank: int | None
+    metrics: dict[str, MetricDistributionResponse]
+    nam_metrics: dict[str, MetricDistributionResponse]
+    training_coverage: dict[str, Any]
+    url: str
+
+
+class RunOverviewResponse(ApiModel):
+    run: RunResponse
+    metric_distributions: dict[str, MetricDistributionResponse]
+    nam_metric_distributions: dict[str, MetricDistributionResponse]
+    training_coverage: dict[str, Any]
+    positions: list[RunPositionSummaryResponse]
+    cases: list[RunExplorerCaseResponse]
+
+
+class RunPositionDetailResponse(ApiModel):
+    run: RunResponse
+    run_metric_distributions: dict[str, MetricDistributionResponse]
+    training_coverage: dict[str, Any]
+    position: RunPositionSummaryResponse
+    cases: list[RunExplorerCaseResponse]

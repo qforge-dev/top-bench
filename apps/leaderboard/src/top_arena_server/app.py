@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -22,6 +22,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from .config import Settings
 from .database import Database
+from .explorer import build_run_explorer
 from .models import Amp, BenchmarkCase, BenchmarkRun, RunCase, RunEvent, now_utc
 from .schemas import (
     AmpResponse,
@@ -44,6 +45,8 @@ from .schemas import (
     RunCaseIndexItem,
     RunCaseIndexResponse,
     RunCaseMetricsResponse,
+    RunOverviewResponse,
+    RunPositionDetailResponse,
     RunResponse,
     UpdateRunMetadataRequest,
     WaveformResponse,
@@ -274,6 +277,36 @@ async def _load_run(
                 select(BenchmarkRun).options(*load_options).where(BenchmarkRun.id == run_id)
             ),
         )
+
+
+async def _load_run_explorer(
+    services: Services,
+    run_id: str,
+) -> tuple[BenchmarkRun | None, list[RunCase]]:
+    async with services.database.session() as session:
+        run = cast(
+            "BenchmarkRun | None",
+            await session.scalar(
+                select(BenchmarkRun)
+                .options(joinedload(BenchmarkRun.amp))
+                .where(BenchmarkRun.id == run_id)
+            ),
+        )
+        if run is None:
+            return None, []
+        rows = list(
+            (
+                await session.scalars(
+                    select(RunCase)
+                    .options(
+                        defer(RunCase.analysis),
+                        joinedload(RunCase.benchmark_case).joinedload(BenchmarkCase.amp),
+                    )
+                    .where(RunCase.run_id == run_id)
+                )
+            ).all()
+        )
+    return run, rows
 
 
 async def _update_run_metadata(
@@ -1084,6 +1117,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             include_training_provenance=include_training_provenance,
         )
 
+    @app.get(
+        "/api/v1/runs/{run_id}/overview",
+        response_model=RunOverviewResponse,
+        tags=["runs"],
+    )
+    async def run_overview(run_id: str) -> RunOverviewResponse:
+        run, rows = await _load_run_explorer(services, run_id)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        explorer = build_run_explorer(
+            rows,
+            run_id=run_id,
+            training_positions=run.training_positions,
+        )
+        return RunOverviewResponse(
+            run=_run_response(run, include_cases=False),
+            **explorer,
+        )
+
+    @app.get(
+        "/api/v1/runs/{run_id}/positions/{position_id}",
+        response_model=RunPositionDetailResponse,
+        tags=["runs"],
+    )
+    async def run_position(run_id: str, position_id: int) -> RunPositionDetailResponse:
+        if position_id < 1:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run position not found")
+        run, rows = await _load_run_explorer(services, run_id)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        explorer = build_run_explorer(
+            rows,
+            run_id=run_id,
+            training_positions=run.training_positions,
+        )
+        position = next(
+            (item for item in explorer["positions"] if item["position_id"] == position_id),
+            None,
+        )
+        if position is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run position not found")
+        return RunPositionDetailResponse(
+            run=_run_response(run, include_cases=False),
+            run_metric_distributions=explorer["metric_distributions"],
+            training_coverage=explorer["training_coverage"],
+            position=position,
+            cases=[item for item in explorer["cases"] if item["position_id"] == position_id],
+        )
+
     @app.patch(
         "/api/v1/runs/{run_id}",
         response_model=RunResponse,
@@ -1406,14 +1488,73 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             page_size=page_size,
         )
 
-    @app.get("/runs/{run_id}", include_in_schema=False)
-    async def run_detail_redirect(run_id: str) -> RedirectResponse:
-        run, locations = await _load_case_locations(services, run_id)
-        if run is None:
+    @app.get("/runs/{run_id}", response_class=HTMLResponse, include_in_schema=False)
+    async def run_overview_page(request: Request, run_id: str) -> Response:
+        async with database.session() as session:
+            run_info = (
+                await session.execute(
+                    select(
+                        BenchmarkRun.name,
+                        BenchmarkRun.created_at,
+                    ).where(BenchmarkRun.id == run_id)
+                )
+            ).one_or_none()
+        if run_info is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
-        if not locations:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "run has no cases")
-        return RedirectResponse(_case_page_url(run_id, locations[0].case_id))
+        run_name, run_started = run_info
+        return templates.TemplateResponse(
+            request=request,
+            name="run_overview.html",
+            context={
+                "run_id": run_id,
+                "run_name": run_name,
+                "run_started": run_started.isoformat(),
+                "run_started_display": run_started.strftime("%d.%m.%Y %H:%M"),
+            },
+        )
+
+    @app.get(
+        "/runs/{run_id}/positions/{position_id}",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
+    async def run_position_page(
+        request: Request,
+        run_id: str,
+        position_id: int,
+    ) -> Response:
+        if position_id < 1:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run position not found")
+        async with database.session() as session:
+            run_info = (
+                await session.execute(
+                    select(
+                        BenchmarkRun.name,
+                        BenchmarkRun.created_at,
+                    )
+                    .join(RunCase, RunCase.run_id == BenchmarkRun.id)
+                    .join(BenchmarkCase, BenchmarkCase.id == RunCase.benchmark_case_id)
+                    .where(
+                        BenchmarkRun.id == run_id,
+                        BenchmarkCase.position_index == position_id - 1,
+                    )
+                    .limit(1)
+                )
+            ).one_or_none()
+        if run_info is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run position not found")
+        run_name, run_started = run_info
+        return templates.TemplateResponse(
+            request=request,
+            name="position_detail.html",
+            context={
+                "run_id": run_id,
+                "position_id": position_id,
+                "run_name": run_name,
+                "run_started": run_started.isoformat(),
+                "run_started_display": run_started.strftime("%d.%m.%Y %H:%M"),
+            },
+        )
 
     @app.get("/amps/{amp_id}", response_class=HTMLResponse, include_in_schema=False)
     async def amp_detail(request: Request, amp_id: str) -> Response:

@@ -32,7 +32,7 @@ flowchart LR
     D --> E[(S3 audio and PostgreSQL state)]
     E --> F[Scoring workers]
     F -->|versioned metrics| E
-    E --> G[Public leaderboard and case inspector]
+    E --> G[Leaderboard, run reports, position reports, and case inspector]
 ```
 
 For each benchmark case, the SDK downloads a dry input, passes the local file and its
@@ -141,10 +141,12 @@ The [Top Arena web application](https://top-arena.labqoat.com) serves three audi
 The leaderboard shows status, aggregate metrics, speed, and the Pareto frontier for
 mean ESR versus positions per control (unique training positions divided by the amp's
 knobs and switches). Lower ESR and fewer positions per control are better. Every model
-links to a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. Run pages list
-every declared training position and dry-file building block independently. The selected case is
-preserved in copied URLs and browser history, while large audio objects are only loaded
-when playback begins. Interactive API documentation is available at
+links to a human-oriented report at `/runs/{run_id}` with metric distributions, P90 tails,
+training-coverage analysis, exact provenance, and sortable position and case summaries.
+Each measured setting has its own report at `/runs/{run_id}/positions/{position_id}` and
+links onward to the lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The
+selected case is preserved in copied URLs and browser history, while large audio objects
+are only loaded when playback begins. Interactive API documentation is available at
 [`/docs`](https://top-arena.labqoat.com/docs), and the health endpoint is `/health`.
 
 Run metadata can be corrected without changing calculated audio scores through

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+import pytest
 import soundfile as sf
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -35,8 +36,9 @@ async def _seed_run(settings: Settings, source: Path) -> tuple[str, list[RunCase
                 amp_id="detail-amp",
                 name="case-detail-model",
                 creator="tests",
+                amp_control_count_override=2,
                 unique_positions_used=2,
-                training_positions=[[0.1] * 6, [0.8] * 6],
+                training_positions=[[0.0, 0.0], [0.2, 0.2]],
                 training_dry_files=["training/clean.wav", "training/drive.wav"],
                 audio_duration_sum=0.4,
                 turns=1,
@@ -158,9 +160,71 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         first_url = f"/runs/{run_id}/cases/{first_id}"
         last_url = f"/runs/{run_id}/cases/{last_id}"
 
-        redirect = await client.get(f"/runs/{run_id}")
-        assert redirect.status_code == 307
-        assert redirect.headers["location"] == first_url
+        overview_page = await client.get(f"/runs/{run_id}")
+        overview_page.raise_for_status()
+        assert f'data-run-id="{run_id}"' in overview_page.text
+        assert "case-detail-model · Run report · Top Arena" in overview_page.text
+        assert "/static/run_overview.css?v=20260903-run-report" in overview_page.text
+        assert "/static/run_overview.js?v=20260903-run-report" in overview_page.text
+        assert 'id="coverage-chart"' in overview_page.text
+        assert 'id="position-body"' in overview_page.text
+        assert 'id="case-body"' in overview_page.text
+
+        overview_response = await client.get(f"/api/v1/runs/{run_id}/overview")
+        overview_response.raise_for_status()
+        overview = overview_response.json()
+        assert overview["run"]["id"] == run_id
+        assert overview["run"]["cases"] == []
+        esr_distribution = overview["metric_distributions"]["esr"]
+        assert esr_distribution["count"] == 4
+        assert esr_distribution["mean"] == pytest.approx(0.025)
+        assert esr_distribution["median"] == pytest.approx(0.025)
+        assert esr_distribution["p90"] == pytest.approx(0.037)
+        assert esr_distribution["best"] == pytest.approx(0.01)
+        assert esr_distribution["worst"] == pytest.approx(0.04)
+        assert overview["nam_metric_distributions"]["esr"]["mean"] == 0.055
+        assert overview["training_coverage"]["available"] is True
+        assert overview["training_coverage"]["analyzed_settings"] == 2
+        assert overview["training_coverage"]["training_control_count"] == 2
+        assert len(overview["positions"]) == 2
+        assert overview["positions"][0]["esr_error_rank"] == 2
+        assert overview["positions"][0]["metrics"]["esr"]["mean"] == 0.02
+        assert overview["positions"][0]["metrics"]["esr"]["p90"] == 0.028
+        assert overview["positions"][1]["esr_error_rank"] == 1
+        assert overview["positions"][1]["metrics"]["esr"]["mean"] == 0.03
+        assert overview["positions"][1]["url"] == f"/runs/{run_id}/positions/2"
+        assert [item["index"] for item in overview["cases"]] == [1, 2, 3, 4]
+        assert overview["cases"][0]["url"] == first_url
+        assert overview["cases"][0]["position_url"] == f"/runs/{run_id}/positions/1"
+
+        position_response = await client.get(f"/api/v1/runs/{run_id}/positions/1")
+        position_response.raise_for_status()
+        position = position_response.json()
+        assert position["position"]["position_id"] == 1
+        assert position["position"]["positions"] == [[0.1, 0.2]]
+        assert position["position"]["total_cases"] == 2
+        assert position["position"]["training_coverage"][
+            "nearest_training_distance"
+        ] == pytest.approx(0.070710678)
+        assert (
+            position["position"]["training_coverage"]["nearest_training_points"][0][
+                "training_position_id"
+            ]
+            == 2
+        )
+        assert position["training_coverage"]["analyzed_settings"] == 2
+        assert [item["index"] for item in position["cases"]] == [1, 3]
+
+        position_page = await client.get(f"/runs/{run_id}/positions/1")
+        position_page.raise_for_status()
+        assert f'data-run-id="{run_id}"' in position_page.text
+        assert 'data-position-id="1"' in position_page.text
+        assert "/static/position_detail.js?v=20260903-run-report" in position_page.text
+        assert 'id="position-case-chart"' in position_page.text
+        assert 'id="nearest-training-controls"' in position_page.text
+
+        assert (await client.get(f"/api/v1/runs/{run_id}/positions/99")).status_code == 404
+        assert (await client.get(f"/runs/{run_id}/positions/99")).status_code == 404
 
         index_response = await client.get(f"/api/v1/runs/{run_id}/case-index")
         index_response.raise_for_status()
@@ -168,7 +232,7 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert case_index["run"]["id"] == run_id
         assert case_index["run"]["cases"] == []
         assert case_index["run"]["training_provenance_included"] is True
-        assert case_index["run"]["training_positions"] == [[0.1] * 6, [0.8] * 6]
+        assert case_index["run"]["training_positions"] == [[0.0, 0.0], [0.2, 0.2]]
         assert case_index["run"]["training_dry_files"] == [
             "training/clean.wav",
             "training/drive.wav",
@@ -195,6 +259,8 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
         assert "/static/case_detail.css?v=20260903-training-provenance" in direct_page.text
         assert "/static/case_detail.js?v=20260903-training-provenance" in direct_page.text
+        assert f'id="run-report-link" class="back-link" href="/runs/{run_id}"' in direct_page.text
+        assert 'id="position-report-link"' in direct_page.text
         assert 'id="training-positions-body"' in direct_page.text
         assert 'id="training-files"' in direct_page.text
         assert 'id="run-started"' in direct_page.text
