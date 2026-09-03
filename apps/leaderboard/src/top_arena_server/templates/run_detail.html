@@ -9,8 +9,8 @@
     <title>{{ resolved_title }}{% if "Top Arena" not in resolved_title %} · Top Arena{% endif %}</title>
     <meta name="description" content="Detailed benchmark scores, audio, and time-series comparison.">
     <link rel="stylesheet" href="/static/styles.css?v=20260901-scrollable-tables">
-    <link rel="stylesheet" href="/static/case_detail.css?v=20260901-run-description">
-    <script defer src="/static/case_detail.js?v=20260902-realtime-comparison"></script>
+    <link rel="stylesheet" href="/static/case_detail.css?v=20260903-training-provenance">
+    <script defer src="/static/case_detail.js?v=20260903-training-provenance"></script>
   </head>
   <body class="detail-page">
     <a class="skip-link" href="#case-inspector">Skip to case inspector</a>
@@ -114,6 +114,34 @@
             </header>
 
             <dl id="case-metrics" class="case-metrics" aria-label="Selected case scores"></dl>
+
+            <section class="training-panel panel" aria-labelledby="training-title">
+              <header class="training-heading">
+                <div>
+                  <p class="lab-block-label">Training provenance</p>
+                  <h3 id="training-title">Training building blocks</h3>
+                </div>
+                <p id="training-summary">Loading training data…</p>
+              </header>
+              <p class="training-explanation">Positions and dry files are independent lists; they do not imply one file per position.</p>
+              <div class="training-grid">
+                <section aria-labelledby="training-positions-title">
+                  <h4 id="training-positions-title">Control positions</h4>
+                  <div id="training-positions-frame" class="training-scroll" role="region" aria-label="Training control positions" tabindex="0">
+                    <table class="training-positions-table">
+                      <thead id="training-positions-head"></thead>
+                      <tbody id="training-positions-body"></tbody>
+                    </table>
+                  </div>
+                  <p id="training-positions-empty" class="training-empty" hidden>Exact positions were not recorded for this legacy run.</p>
+                </section>
+                <section aria-labelledby="training-files-title">
+                  <h4 id="training-files-title">Dry files</h4>
+                  <ol id="training-files" class="training-files"></ol>
+                  <p id="training-files-empty" class="training-empty" hidden>Dry-file identifiers were not recorded for this legacy run.</p>
+                </section>
+              </div>
+            </section>
 
             <section class="waveform-panel panel" aria-labelledby="waveform-title">
               <div class="waveform-heading">

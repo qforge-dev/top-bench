@@ -19,7 +19,8 @@ def test_benchmark_create_builds_a_typed_run(tmp_path: Path) -> None:
     run = benchmark.create(
         name="super-model-v1",
         creator="tests",
-        unique_positions_used=1,
+        training_positions=((0.1, 0.2, 0.3, 0.4, 0.5),),
+        training_dry_files=("train/clean.wav", "train/drive.wav"),
         audio_duration_sum=50.0,
         turns=1,
         training_time=5_000.0,
@@ -34,6 +35,8 @@ def test_benchmark_create_builds_a_typed_run(tmp_path: Path) -> None:
     assert run.metadata.name == "super-model-v1"
     assert run.metadata.parameter_count == 40_000
     assert run.metadata.amp_control_count == 5
+    assert run.metadata.unique_positions_used == 1
+    assert run.metadata.training_dry_files == ("train/clean.wav", "train/drive.wav")
     assert run.cache_dir == tmp_path
 
 
@@ -70,13 +73,22 @@ async def test_async_metadata_update_uses_the_configured_server(
     await benchmark.update_metadata_async(
         "run-1",
         amp_control_count=5,
-        unique_positions_used=50,
+        training_positions=((0.1,) * 5, (0.9,) * 5),
+        training_dry_files=("train/clean.wav", "train/drive.wav"),
         server_url="https://arena.test",
     )
 
     assert calls == [
         ("init", "https://arena.test"),
-        ("update", "run-1", {"amp_control_count": 5, "unique_positions_used": 50}),
+        (
+            "update",
+            "run-1",
+            {
+                "amp_control_count": 5,
+                "training_positions": [[0.1] * 5, [0.9] * 5],
+                "training_dry_files": ["train/clean.wav", "train/drive.wav"],
+            },
+        ),
         ("close",),
     ]
 
@@ -102,3 +114,50 @@ def test_report_signal_thresholds_are_non_negative_and_finite() -> None:
         PipelineOptions(report_min_finding_signal=-1.0)
     with pytest.raises(ValueError, match="signal thresholds"):
         PipelineOptions(report_min_evidence_signal=float("inf"))
+
+
+@pytest.mark.parametrize(
+    ("positions", "files", "message"),
+    [
+        ((), ("training.wav",), "at least one training position"),
+        (((0.5,),), (), "at least one training dry-file"),
+        (((0.5,), (0.5,)), ("training.wav",), "must be unique"),
+        (((-0.1,),), ("training.wav",), "between 0 and 1"),
+    ],
+)
+def test_training_provenance_is_required_and_validated(
+    tmp_path: Path,
+    positions: tuple[tuple[float, ...], ...],
+    files: tuple[str, ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        benchmark.create(
+            name="invalid-training-provenance",
+            creator="tests",
+            training_positions=positions,
+            training_dry_files=files,
+            audio_duration_sum=1.0,
+            turns=1,
+            training_time=1.0,
+            description="invalid",
+            parameter_count=1,
+            cache_dir=tmp_path,
+        )
+
+
+def test_training_positions_match_an_explicit_amp_control_count(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="exactly 5 values"):
+        benchmark.create(
+            name="wrong-control-width",
+            creator="tests",
+            training_positions=((0.1, 0.2),),
+            training_dry_files=("training.wav",),
+            audio_duration_sum=1.0,
+            turns=1,
+            training_time=1.0,
+            description="invalid",
+            parameter_count=1,
+            amp_control_count=5,
+            cache_dir=tmp_path,
+        )

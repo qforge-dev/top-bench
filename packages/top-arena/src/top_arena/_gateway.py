@@ -94,7 +94,8 @@ class HttpBenchmarkGateway:
                 "amp_id": amp_id,
                 "name": metadata.name,
                 "creator": metadata.creator,
-                "unique_positions_used": metadata.unique_positions_used,
+                "training_positions": metadata.training_positions,
+                "training_dry_files": metadata.training_dry_files,
                 "audio_duration_sum": metadata.audio_duration_sum,
                 "turns": metadata.turns,
                 "training_time": metadata.training_time,
@@ -240,7 +241,10 @@ class HttpBenchmarkGateway:
         _ = response.raise_for_status()
 
     async def get_run(self, run_id: str) -> RunSnapshot:
-        response = await self._get_client().get(f"api/v1/runs/{quote(run_id, safe='')}")
+        response = await self._get_client().get(
+            f"api/v1/runs/{quote(run_id, safe='')}",
+            params={"include_training_provenance": "false"},
+        )
         _ = response.raise_for_status()
         payload = _response_object(response)
         snapshot_id = _required_str(payload, "id")

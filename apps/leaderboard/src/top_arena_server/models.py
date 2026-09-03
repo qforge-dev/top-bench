@@ -106,6 +106,8 @@ class BenchmarkRun(Base):
     amp_id: Mapped[str] = mapped_column(ForeignKey("amps.id"), index=True)
     amp_control_count_override: Mapped[int | None] = mapped_column(Integer)
     unique_positions_used: Mapped[int] = mapped_column(Integer)
+    training_positions: Mapped[list[list[float]]] = mapped_column(JSON, default=list)
+    training_dry_files: Mapped[list[str]] = mapped_column(JSON, default=list)
     audio_duration_sum: Mapped[float] = mapped_column(Float)
     turns: Mapped[int] = mapped_column(Integer)
     training_time: Mapped[float] = mapped_column(Float)

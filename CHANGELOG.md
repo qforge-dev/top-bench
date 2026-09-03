@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-03
 
+- Required exact training-position vectors and dry-file identifiers for every new run,
+  derive the position count from those vectors, and show both provenance lists on run pages.
 - Added a native, non-ONNX NAM-A2-FULL speed calibration using pinned
   NeuralAmpModelerCore runners. Runs now report candidate speed relative to NAM-A2 on
   the same machine while retaining absolute realtime, and concurrent processes share a
@@ -44,4 +46,4 @@
 - Classified speed against the 31x NAM-FULL target and 15.5x acceptable floor.
 
 The publishing workflow creates an immutable PEP 440 post-release from this base version,
-for example `0.3.0.post2`.
+for example `0.4.0.post2`.

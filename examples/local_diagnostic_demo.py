@@ -119,7 +119,8 @@ async def _run(
                 metadata=BenchmarkMetadata(
                     name=f"local-diagnostic-demo-{datetime.now(UTC):%H%M%S}",
                     creator="local-demo",
-                    unique_positions_used=len(default_positions()),
+                    training_positions=tuple(position[0] for position in default_positions()),
+                    training_dry_files=("none://procedural-diagnostic-model",),
                     audio_duration_sum=15.0,
                     turns=1,
                     training_time=0.0,

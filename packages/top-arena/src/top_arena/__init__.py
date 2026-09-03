@@ -5,7 +5,13 @@
 from importlib.metadata import version
 
 from top_arena import benchmark
-from top_arena._models import BenchmarkResult, PipelineOptions, PositionMatrix, ReportFormat
+from top_arena._models import (
+    BenchmarkResult,
+    PipelineOptions,
+    PositionMatrix,
+    ReportFormat,
+    TrainingPosition,
+)
 from top_arena._pipeline import BenchmarkRun
 
 __version__ = version("top-arena")
@@ -16,6 +22,7 @@ __all__ = [
     "PipelineOptions",
     "PositionMatrix",
     "ReportFormat",
+    "TrainingPosition",
     "__version__",
     "benchmark",
 ]

@@ -54,7 +54,8 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
             metadata=BenchmarkMetadata(
                 name="sdk-server-integration",
                 creator="tests",
-                unique_positions_used=1,
+                training_positions=((0.5,) * 6,),
+                training_dry_files=("training.wav",),
                 audio_duration_sum=0.1,
                 turns=1,
                 training_time=1.0,
@@ -87,7 +88,8 @@ async def test_sdk_and_server_complete_a_real_http_run(tmp_path: Path) -> None:
             metadata=BenchmarkMetadata(
                 name="sdk-callback-failure",
                 creator="tests",
-                unique_positions_used=1,
+                training_positions=((0.5,) * 6,),
+                training_dry_files=("training.wav",),
                 audio_duration_sum=0.1,
                 turns=1,
                 training_time=1.0,

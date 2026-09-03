@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any, Literal, Self
 
@@ -41,12 +42,44 @@ class NamA2CalibrationAssetsResponse(ApiModel):
     audio_seconds: float
 
 
+def _validated_training_positions(value: list[list[float]]) -> list[list[float]]:
+    if any(not position for position in value):
+        msg = "training positions cannot be empty"
+        raise ValueError(msg)
+    widths = {len(position) for position in value}
+    if len(widths) > 1:
+        msg = "all training positions must contain the same number of controls"
+        raise ValueError(msg)
+    if any(not math.isfinite(control) or not 0 <= control <= 1 for row in value for control in row):
+        msg = "training position controls must be finite values between 0 and 1"
+        raise ValueError(msg)
+    if len({tuple(position) for position in value}) != len(value):
+        msg = "training positions must be unique"
+        raise ValueError(msg)
+    return value
+
+
+def _validated_training_dry_files(value: list[str]) -> list[str]:
+    cleaned = [file_name.strip() for file_name in value]
+    if any(not file_name for file_name in cleaned):
+        msg = "training dry-file identifiers cannot be empty"
+        raise ValueError(msg)
+    if any(len(file_name) > 1024 for file_name in cleaned):
+        msg = "training dry-file identifiers cannot exceed 1024 characters"
+        raise ValueError(msg)
+    if len(set(cleaned)) != len(cleaned):
+        msg = "training dry-file identifiers must be unique"
+        raise ValueError(msg)
+    return cleaned
+
+
 class CreateRunRequest(ApiModel):
     amp_id: str
     name: str
     creator: str = "anonymous"
     amp_control_count: int | None = Field(default=None, gt=0)
-    unique_positions_used: int
+    training_positions: list[list[float]] = Field(min_length=1, max_length=10_000)
+    training_dry_files: list[str] = Field(min_length=1, max_length=10_000)
     audio_duration_sum: float
     turns: int
     training_time: float
@@ -54,6 +87,12 @@ class CreateRunRequest(ApiModel):
     parameter_count: int
     nam_a2_realtime_x: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     speed_calibration: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_training_provenance(self) -> Self:
+        self.training_positions = _validated_training_positions(self.training_positions)
+        self.training_dry_files = _validated_training_dry_files(self.training_dry_files)
+        return self
 
 
 class CreateRunResponse(ApiModel):
@@ -66,7 +105,16 @@ class UpdateRunMetadataRequest(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     creator: str | None = Field(default=None, min_length=1, max_length=255)
     amp_control_count: int | None = Field(default=None, gt=0)
-    unique_positions_used: int | None = Field(default=None, ge=0)
+    training_positions: list[list[float]] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=10_000,
+    )
+    training_dry_files: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=10_000,
+    )
     audio_duration_sum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     turns: int | None = Field(default=None, ge=0)
     training_time: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -86,6 +134,10 @@ class UpdateRunMetadataRequest(ApiModel):
         if null_fields:
             msg = f"metadata fields cannot be null: {', '.join(sorted(null_fields))}"
             raise ValueError(msg)
+        if self.training_positions is not None:
+            self.training_positions = _validated_training_positions(self.training_positions)
+        if self.training_dry_files is not None:
+            self.training_dry_files = _validated_training_dry_files(self.training_dry_files)
         return self
 
 
@@ -142,7 +194,11 @@ class RunResponse(ApiModel):
     amp_name: str
     amp_type: str
     amp_control_count: int
+    amp_control_names: list[str]
     unique_positions_used: int
+    training_positions: list[list[float]]
+    training_dry_files: list[str]
+    training_provenance_included: bool
     audio_duration_sum: float
     turns: int
     training_time: float

@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "top-arena"
-version = "0.3.0"
+version = "0.4.0"
 description = "Run local audio models against the public Top Arena benchmark"
 readme = "README.md"
 license = "MIT"

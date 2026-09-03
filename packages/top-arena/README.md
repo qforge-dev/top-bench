@@ -46,7 +46,11 @@ from my_model import render_audio
 run = benchmark.create(
     name="super-model-v1",
     creator="your-name",
-    unique_positions_used=1,
+    training_positions=(
+        (0.15, 1.0, 0.35, 0.75, 0.2),
+        (0.8, 0.0, 0.6, 0.4, 0.7),
+    ),
+    training_dry_files=("training/clean-riff.wav", "training/chords.wav"),
     audio_duration_sum=4_000.0,
     turns=1,
     training_time=5_000.0,
@@ -115,7 +119,8 @@ The fields passed to `benchmark.create(...)` make leaderboard comparisons audita
 | --- | --- |
 | `name` | Display name and version of the submitted model. |
 | `creator` | Person, team, or organization responsible for it. |
-| `unique_positions_used` | Number of distinct control positions used in training. |
+| `training_positions` | Every distinct normalized control position used in training, with values in amp-control order. The position count is derived from this required list. |
+| `training_dry_files` | Every dry-file identifier used in training. This is a separate required list; no position-to-file mapping is implied. |
 | `audio_duration_sum` | Total training-audio duration in seconds. |
 | `turns` | Number of complete passes or turns through the training material. |
 | `training_time` | End-to-end training time in seconds. |
@@ -130,7 +135,12 @@ the Python client:
 ```python
 from top_arena import benchmark
 
-benchmark.update_metadata("RUN_ID", amp_control_count=5)
+benchmark.update_metadata(
+    "RUN_ID",
+    amp_control_count=5,
+    training_positions=((0.15, 1.0, 0.35, 0.75, 0.2),),
+    training_dry_files=("training/clean-riff.wav",),
+)
 ```
 
 Use `await benchmark.update_metadata_async(...)` inside an async event loop. The
@@ -139,14 +149,20 @@ equivalent HTTP endpoint is `PATCH /api/v1/runs/{run_id}`:
 ```bash
 curl --request PATCH \
   --header 'content-type: application/json' \
-  --data '{"amp_control_count": 5}' \
+  --data '{"amp_control_count":5,"training_positions":[[0.15,1,0.35,0.75,0.2]],"training_dry_files":["training/clean-riff.wav"]}' \
   https://top-arena.labqoat.com/api/v1/runs/RUN_ID
 ```
 
-The same endpoint accepts `name`, `creator`, `unique_positions_used`,
+The same endpoint accepts `name`, `creator`, `training_positions`, `training_dry_files`,
 `audio_duration_sum`, `turns`, `training_time`, `description`, and `parameter_count`.
 Send `null` for `amp_control_count` to return to the shared amp definition. The amp ID
 and calculated audio scores cannot be overwritten.
+
+Position values must be finite numbers from 0 to 1, use the target amp's published
+control order, and be unique. Dry-file values are stable display identifiers, such as
+repository-relative paths; avoid machine-specific absolute paths. Models without a
+training corpus should use an explicit identifier such as
+`none://procedural-or-untrained-model` instead of inventing a file.
 
 ## How the pipeline works
 

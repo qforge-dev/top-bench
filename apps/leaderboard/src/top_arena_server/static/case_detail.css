@@ -1637,6 +1637,135 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+.training-panel {
+  padding: 18px;
+}
+
+.training-heading {
+  display: flex;
+  gap: 20px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.training-heading h3 {
+  margin: 5px 0 0;
+  font-size: 1.05rem;
+}
+
+.training-heading > p,
+.training-explanation,
+.training-empty {
+  color: var(--text-muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.62rem;
+}
+
+.training-heading > p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.training-explanation {
+  margin: 7px 0 15px;
+}
+
+.training-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.8fr);
+}
+
+.training-grid > section {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: #0c1117;
+}
+
+.training-grid h4 {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+  color: #9ca8b1;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.training-scroll,
+.training-files {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.training-positions-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.training-positions-table th,
+.training-positions-table td {
+  padding: 8px 10px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.training-positions-table thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: #141a21;
+  color: #9ca8b1;
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.training-positions-table th:first-child {
+  left: 0;
+  text-align: left;
+}
+
+.training-positions-table tbody th {
+  position: sticky;
+  left: 0;
+  background: #10161d;
+  color: var(--accent-strong);
+}
+
+.training-files {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.training-files li {
+  display: grid;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.training-files code {
+  color: #cbd2d8;
+  font-size: 0.64rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.training-empty {
+  padding: 14px 12px;
+  margin: 0;
+  line-height: 1.5;
+}
+
 @media (max-width: 1180px) {
   .lab-layout {
     grid-template-columns: 225px minmax(0, 1fr);
@@ -1689,10 +1818,19 @@
   }
 
   .analysis-heading,
-  .listening-heading {
+  .listening-heading,
+  .training-heading {
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .training-heading > p {
+    white-space: normal;
+  }
+
+  .training-grid {
+    grid-template-columns: 1fr;
   }
 
 }

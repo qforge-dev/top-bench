@@ -88,7 +88,18 @@ def _parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespa
     parser.add_argument("--output-gain", type=float, default=0.9)
     parser.add_argument("--output-boost-db", type=float, default=DEFAULT_OUTPUT_BOOST_DB)
     parser.add_argument("--server-url")
-    parser.add_argument("--unique-positions-used", type=int, default=10)
+    parser.add_argument(
+        "--training-positions-file",
+        type=Path,
+        required=True,
+        help="JSON array containing every normalized training control position",
+    )
+    parser.add_argument(
+        "--training-dry-files-file",
+        type=Path,
+        required=True,
+        help="JSON array containing every dry-file identifier used for training",
+    )
     parser.add_argument("--audio-duration-sum", type=float, default=1900.0)
     parser.add_argument("--turns", type=int, default=1)
     parser.add_argument("--training-time", type=float, default=0.0)
@@ -99,6 +110,11 @@ def _parse_arguments(arguments: Sequence[str] | None = None) -> argparse.Namespa
 def main() -> None:
     arguments = _parse_arguments()
     _require_runtime_files(PLUGIN_PATH, MODEL_PATH, PRESET_PATH)
+    training_positions = json.loads(arguments.training_positions_file.read_text())
+    training_dry_files = json.loads(arguments.training_dry_files_file.read_text())
+    if not isinstance(training_positions, list) or not isinstance(training_dry_files, list):
+        msg = "training provenance files must each contain a JSON array"
+        raise TypeError(msg)
 
     timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
     output_dir = arguments.output_root.expanduser().resolve() / timestamp
@@ -114,7 +130,8 @@ def main() -> None:
     run = benchmark.create(
         name=run_name,
         creator=arguments.creator,
-        unique_positions_used=arguments.unique_positions_used,
+        training_positions=training_positions,
+        training_dry_files=training_dry_files,
         audio_duration_sum=arguments.audio_duration_sum,
         turns=arguments.turns,
         training_time=arguments.training_time,

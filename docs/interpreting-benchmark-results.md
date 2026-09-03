@@ -39,13 +39,14 @@ derive or independently verify them:
 | Field | Intended meaning |
 |---|---|
 | `name`, `creator`, `description` | Model identity and provenance supplied for the run. |
-| `unique_positions_used` | Number of distinct control settings represented in training. |
+| `training_positions` | Exact normalized control vectors declared for training; `unique_positions_used` is derived from this list. |
+| `training_dry_files` | Exact dry-file identifiers declared for training, independently of the position list. |
 | `audio_duration_sum` | Total declared training-audio duration in seconds. |
 | `turns` | Declared training turns or passes. The project does not yet enforce a more precise unit. |
 | `training_time` | Declared training time in seconds. Hardware is not encoded with it. |
 | `parameter_count` | Declared number of model parameters. |
 
-These fields provide efficiency and data-budget context, but they do not change the
+These fields provide efficiency, provenance, and data-budget context, but they do not change the
 reference-error metrics. `audio_duration_sum` is also the client's fallback duration for
 realtime calculation if manifest cases do not provide durations. Comparisons involving
 submitted metadata should use a consistent reporting convention.

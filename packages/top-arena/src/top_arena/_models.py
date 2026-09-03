@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 type PositionMatrix = tuple[tuple[float, ...], ...]
+type TrainingPosition = tuple[float, ...]
 type ModelOutput = Path | str
 type ReportFormat = Literal["none", "text", "agent", "json", "jsonl"]
 type ModelCallback = Callable[
@@ -48,13 +49,82 @@ class NamA2SpeedCalibration:
 class BenchmarkMetadata:
     name: str
     creator: str
-    unique_positions_used: int
+    training_positions: tuple[TrainingPosition, ...]
+    training_dry_files: tuple[str, ...]
     audio_duration_sum: float
     turns: int
     training_time: float
     description: str
     parameter_count: int
     amp_control_count: int | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "training_positions",
+            normalize_training_positions(self.training_positions),
+        )
+        object.__setattr__(
+            self,
+            "training_dry_files",
+            normalize_training_dry_files(self.training_dry_files),
+        )
+        if self.amp_control_count is not None and any(
+            len(position) != self.amp_control_count for position in self.training_positions
+        ):
+            msg = (
+                "each training position must contain exactly "
+                f"{self.amp_control_count} values in amp-control order"
+            )
+            raise ValueError(msg)
+
+    @property
+    def unique_positions_used(self) -> int:
+        """Number of exact, distinct training positions supplied by the author."""
+        return len(self.training_positions)
+
+
+def normalize_training_positions(
+    positions: Sequence[Sequence[float]],
+) -> tuple[TrainingPosition, ...]:
+    normalized = tuple(tuple(float(control) for control in position) for position in positions)
+    if not normalized:
+        msg = "at least one training position is required"
+        raise ValueError(msg)
+    if any(not position for position in normalized):
+        msg = "training positions cannot be empty"
+        raise ValueError(msg)
+    if len({len(position) for position in normalized}) > 1:
+        msg = "all training positions must contain the same number of controls"
+        raise ValueError(msg)
+    if any(
+        not math.isfinite(control) or not 0 <= control <= 1
+        for position in normalized
+        for control in position
+    ):
+        msg = "training position controls must be finite values between 0 and 1"
+        raise ValueError(msg)
+    if len(set(normalized)) != len(normalized):
+        msg = "training positions must be unique"
+        raise ValueError(msg)
+    return normalized
+
+
+def normalize_training_dry_files(files: Sequence[str]) -> tuple[str, ...]:
+    normalized = tuple(file_name.strip() for file_name in files)
+    if not normalized:
+        msg = "at least one training dry-file identifier is required"
+        raise ValueError(msg)
+    if any(not file_name for file_name in normalized):
+        msg = "training dry-file identifiers cannot be empty"
+        raise ValueError(msg)
+    if any(len(file_name) > 1024 for file_name in normalized):
+        msg = "training dry-file identifiers cannot exceed 1024 characters"
+        raise ValueError(msg)
+    if len(set(normalized)) != len(normalized):
+        msg = "training dry-file identifiers must be unique"
+        raise ValueError(msg)
+    return normalized
 
 
 @dataclass(frozen=True, slots=True)

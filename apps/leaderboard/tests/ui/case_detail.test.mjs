@@ -22,7 +22,12 @@ function detail(caseId, index) {
       created_at: "2026-08-31T12:34:56Z",
       status: "completed",
       amp_name: "Blackface 63",
+      amp_control_count: 2,
+      amp_control_names: ["bass", "master"],
       unique_positions_used: 5,
+      training_positions: [[0.1, 0.75], [0.9, 0.25]],
+      training_dry_files: ["clean-riff-01.wav", "chords/edge-breakup.wav"],
+      training_provenance_included: true,
       total_cases: 2,
       completed_cases: 2,
       metrics: {
@@ -141,6 +146,10 @@ function markup() {
           <button id="confirm-delete-run" type="button">Delete result</button>
         </div>
         <div id="run-summary"></div><div id="nam-run-summary"></div><div id="aggregate-comparison"></div>
+        <p id="training-summary"></p>
+        <div id="training-positions-frame"><table><thead id="training-positions-head"></thead><tbody id="training-positions-body"></tbody></table></div>
+        <p id="training-positions-empty" hidden></p>
+        <ol id="training-files"></ol><p id="training-files-empty" hidden></p>
         <button id="previous-case" type="button">Previous</button>
         <select id="case-select"></select><span id="case-position"></span>
         <button id="next-case" type="button">Next</button>
@@ -317,6 +326,11 @@ async function setup({
         point.esr = esrValues[index];
       });
     }
+    if (url.endsWith("/detail")) {
+      payload.run.training_positions = [];
+      payload.run.training_dry_files = [];
+      payload.run.training_provenance_included = false;
+    }
     if (payload.run) payload.run.status = runStatus;
     if (url.endsWith("/detail")) payload.status = runStatus;
     return { ok: true, status: 200, json: async () => payload };
@@ -351,6 +365,19 @@ test("deep link loads one case lazily and renders its summary, graph, and audio"
   assert.match(document.querySelector("#nam-run-summary").textContent, /Available cases\s*2/);
   assert.match(document.querySelector("#aggregate-comparison").textContent, /ESR\s*Model 50\.0% lower/);
   assert.match(document.querySelector("#aggregate-comparison").textContent, /Correlation\s*Model 4\.4% higher/);
+  assert.equal(document.querySelector("#training-summary").textContent, "2 positions · 2 dry files");
+  assert.deepEqual(
+    [...document.querySelectorAll("#training-positions-head th")].map((cell) => cell.textContent),
+    ["Position", "bass", "master"],
+  );
+  assert.deepEqual(
+    [...document.querySelectorAll("#training-positions-body tr")].map((row) => row.textContent),
+    ["010.1000000.750000", "020.9000000.250000"],
+  );
+  assert.deepEqual(
+    [...document.querySelectorAll("#training-files code")].map((item) => item.textContent),
+    ["clean-riff-01.wav", "chords/edge-breakup.wav"],
+  );
   assert.equal(document.querySelector("#case-position").textContent, "1 / 2");
   assert.match(document.querySelector("#position-chips").textContent, /bass\s+0\.66/);
   assert.match(document.querySelector("#case-metrics").textContent, /Correlation/);

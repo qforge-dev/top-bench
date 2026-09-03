@@ -36,6 +36,8 @@ async def _seed_run(settings: Settings, source: Path) -> tuple[str, list[RunCase
                 name="case-detail-model",
                 creator="tests",
                 unique_positions_used=2,
+                training_positions=[[0.1] * 6, [0.8] * 6],
+                training_dry_files=["training/clean.wav", "training/drive.wav"],
                 audio_duration_sum=0.4,
                 turns=1,
                 training_time=12.0,
@@ -165,6 +167,12 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         case_index = index_response.json()
         assert case_index["run"]["id"] == run_id
         assert case_index["run"]["cases"] == []
+        assert case_index["run"]["training_provenance_included"] is True
+        assert case_index["run"]["training_positions"] == [[0.1] * 6, [0.8] * 6]
+        assert case_index["run"]["training_dry_files"] == [
+            "training/clean.wav",
+            "training/drive.wav",
+        ]
         assert [item["case_id"] for item in case_index["cases"]] == [
             run_case.benchmark_case_id for run_case in run_cases
         ]
@@ -185,8 +193,10 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         assert 'id="run-description"' in direct_page.text
         assert "Case detail API test" in direct_page.text
         assert "<title>case-detail-model · Case detail · Top Arena</title>" in direct_page.text
-        assert "/static/case_detail.css?v=20260901-run-description" in direct_page.text
-        assert "/static/case_detail.js?v=20260902-realtime-comparison" in direct_page.text
+        assert "/static/case_detail.css?v=20260903-training-provenance" in direct_page.text
+        assert "/static/case_detail.js?v=20260903-training-provenance" in direct_page.text
+        assert 'id="training-positions-body"' in direct_page.text
+        assert 'id="training-files"' in direct_page.text
         assert 'id="run-started"' in direct_page.text
         assert "Benchmark started · UTC" in direct_page.text
         assert direct_page.text.count(' controls loop preload="none"') == 4
@@ -221,6 +231,9 @@ async def test_case_routes_are_ordered_linkable_lazy_and_navigable(tmp_path: Pat
         first_response = await client.get(f"/api/v1/runs/{run_id}/cases/{first_id}/detail")
         first_response.raise_for_status()
         first = first_response.json()
+        assert first["run"]["training_provenance_included"] is False
+        assert first["run"]["training_positions"] == []
+        assert first["run"]["training_dry_files"] == []
         assert first["index"] == 1
         assert first["total"] == 4
         assert first["previous_url"] is None
@@ -341,7 +354,8 @@ async def test_missing_candidate_audio_returns_not_found(tmp_path: Path) -> None
                 "amp_id": "pending-amp",
                 "name": "pending-candidate",
                 "creator": "tests",
-                "unique_positions_used": 1,
+                "training_positions": [[0.5] * 6],
+                "training_dry_files": ["training.wav"],
                 "audio_duration_sum": 0.1,
                 "turns": 1,
                 "training_time": 1.0,

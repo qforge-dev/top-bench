@@ -61,6 +61,40 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
         )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            missing_provenance = await client.post(
+                "/api/v1/runs",
+                json={
+                    "amp_id": "demo-bias-x",
+                    "name": "missing-training-provenance",
+                    "creator": "tests",
+                    "audio_duration_sum": 0.1,
+                    "turns": 1,
+                    "training_time": 12.0,
+                    "description": "Legacy count-only metadata",
+                    "parameter_count": 40_000,
+                },
+            )
+            assert missing_provenance.status_code == 422
+
+            wrong_position_width = await client.post(
+                "/api/v1/runs",
+                json={
+                    "amp_id": "demo-bias-x",
+                    "name": "wrong-position-width",
+                    "creator": "tests",
+                    "amp_control_count": 5,
+                    "training_positions": [[0.0, 0.1]],
+                    "training_dry_files": ["training.wav"],
+                    "audio_duration_sum": 0.1,
+                    "turns": 1,
+                    "training_time": 12.0,
+                    "description": "Incomplete control vector",
+                    "parameter_count": 40_000,
+                },
+            )
+            assert wrong_position_width.status_code == 422
+            assert "exactly 5 values" in wrong_position_width.text
+
             manifest_response = await client.get("/api/v1/amps/demo-bias-x/manifest")
             manifest_response.raise_for_status()
             manifest = manifest_response.json()
@@ -73,7 +107,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
                     "amp_id": "demo-bias-x",
                     "name": "lifecycle-model",
                     "creator": "tests",
-                    "unique_positions_used": 1,
+                    "amp_control_count": 5,
+                    "training_positions": [[0.0, 0.1, 0.2, 0.3, 0.4]],
+                    "training_dry_files": ["training/clean-riff.wav"],
                     "audio_duration_sum": 0.1,
                     "turns": 1,
                     "training_time": 12.0,
@@ -122,15 +158,39 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             assert snapshot["metrics"]["esr"]["mean"] is not None  # type: ignore[index]
             assert snapshot["metrics"]["mrstft"]["p90"] is not None  # type: ignore[index]
             assert snapshot["nam_a2_realtime_x"] == 10.0
+            assert snapshot["amp_control_names"][:5] == [
+                "volume",
+                "bright",
+                "bass",
+                "middle",
+                "treble",
+            ]
+            assert snapshot["training_positions"] == [[0.0, 0.1, 0.2, 0.3, 0.4]]
+            assert snapshot["training_dry_files"] == ["training/clean-riff.wav"]
+            assert snapshot["training_provenance_included"] is True
             assert snapshot["speed_calibration"]["platform"] == "linux-x86_64"
             assert snapshot["metrics"]["nam_a2_speed_ratio"]["mean"] == 1.25  # type: ignore[index]
+
+            lightweight_snapshot = (
+                await client.get(
+                    f"/api/v1/runs/{run_id}",
+                    params={"include_training_provenance": "false"},
+                )
+            ).json()
+            assert lightweight_snapshot["training_provenance_included"] is False
+            assert lightweight_snapshot["training_positions"] == []
+            assert lightweight_snapshot["training_dry_files"] == []
 
             original_metrics = snapshot["metrics"]
             metadata_response = await client.patch(
                 f"/api/v1/runs/{run_id}",
                 json={
                     "amp_control_count": 5,
-                    "unique_positions_used": 50,
+                    "training_positions": [[index / 49] * 5 for index in range(50)],
+                    "training_dry_files": [
+                        "training/clean-riff.wav",
+                        "training/chords.wav",
+                    ],
                     "description": "Corrected lifecycle metadata",
                 },
             )
@@ -138,17 +198,28 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             corrected = metadata_response.json()
             assert corrected["amp_control_count"] == 5
             assert corrected["unique_positions_used"] == 50
+            assert len(corrected["training_positions"]) == 50
+            assert corrected["training_dry_files"] == [
+                "training/clean-riff.wav",
+                "training/chords.wav",
+            ]
             assert corrected["description"] == "Corrected lifecycle metadata"
             assert corrected["metrics"] == original_metrics
             cleared_override = await client.patch(
                 f"/api/v1/runs/{run_id}",
-                json={"amp_control_count": None},
+                json={
+                    "amp_control_count": None,
+                    "training_positions": [[index / 49] * 6 for index in range(50)],
+                },
             )
             cleared_override.raise_for_status()
             assert cleared_override.json()["amp_control_count"] == 6
             restored_override = await client.patch(
                 f"/api/v1/runs/{run_id}",
-                json={"amp_control_count": 5},
+                json={
+                    "amp_control_count": 5,
+                    "training_positions": [[index / 49] * 5 for index in range(50)],
+                },
             )
             restored_override.raise_for_status()
             assert restored_override.json()["amp_control_count"] == 5
@@ -253,6 +324,9 @@ async def test_uploaded_audio_is_scored_aggregated_and_visible(tmp_path: Path) -
             leaderboard_response.raise_for_status()
             leaderboard = leaderboard_response.json()
             assert leaderboard["runs"][0]["cases"] == []
+            assert leaderboard["runs"][0]["training_provenance_included"] is False
+            assert leaderboard["runs"][0]["training_positions"] == []
+            assert leaderboard["runs"][0]["training_dry_files"] == []
             assert leaderboard["runs"][0]["amp_control_count"] == 5
             assert leaderboard["runs"][0]["unique_positions_used"] == 50
             assert leaderboard["runs"][0]["metrics"] == leaderboard_metric_summary(

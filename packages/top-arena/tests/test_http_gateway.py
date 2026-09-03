@@ -22,6 +22,8 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
             body = json.loads(request.content)
             assert body["amp_id"] == "demo-amp"
             assert body["amp_control_count"] == 5
+            assert body["training_positions"] == [[0.1, 0.2, 0.3, 0.4, 0.5]]
+            assert body["training_dry_files"] == ["train/clean.wav", "train/drive.wav"]
             assert body["nam_a2_realtime_x"] is None
             assert body["speed_calibration"] == {}
             return httpx.Response(201, json={"id": "run-1"})
@@ -58,6 +60,7 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
         if request.url.path == "/api/v1/runs/run-1/finish":
             return httpx.Response(202, json={"status": "processing"})
         if request.url.path == "/api/v1/runs/run-1":
+            assert request.url.params["include_training_provenance"] == "false"
             return httpx.Response(
                 200,
                 json={
@@ -77,7 +80,8 @@ async def test_http_gateway_uses_the_server_rest_contract(tmp_path: Path) -> Non
     metadata = BenchmarkMetadata(
         name="model-v1",
         creator="tests",
-        unique_positions_used=1,
+        training_positions=((0.1, 0.2, 0.3, 0.4, 0.5),),
+        training_dry_files=("train/clean.wav", "train/drive.wav"),
         audio_duration_sum=5.0,
         turns=1,
         training_time=10.0,
@@ -157,7 +161,8 @@ async def test_http_gateway_records_and_downloads_native_nam_calibration(
         BenchmarkMetadata(
             name="calibrated",
             creator="tests",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=1.0,
             turns=1,
             training_time=1.0,

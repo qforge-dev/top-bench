@@ -159,7 +159,8 @@ async def test_pipeline_overlaps_download_inference_and_upload(
     metadata = BenchmarkMetadata(
         name="super-model-v1",
         creator="test-suite",
-        unique_positions_used=1,
+        training_positions=((0.5,),),
+        training_dry_files=("training.wav",),
         audio_duration_sum=15.0,
         turns=1,
         training_time=5_000.0,
@@ -209,7 +210,8 @@ async def test_native_nam_calibration_is_cached_across_runs(
         metadata=BenchmarkMetadata(
             name="calibrated-model",
             creator="tests",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=0.01,
             turns=1,
             training_time=1.0,
@@ -250,7 +252,8 @@ async def test_pipeline_warms_model_with_random_case_without_uploading_it(
         metadata=BenchmarkMetadata(
             name="warm-model",
             creator="test-suite",
-            unique_positions_used=2,
+            training_positions=((0.1,), (0.9,)),
+            training_dry_files=("training.wav",),
             audio_duration_sum=0.02,
             turns=1,
             training_time=1.0,
@@ -288,7 +291,8 @@ async def test_client_failure_notification_retries_transient_errors(tmp_path: Pa
         metadata=BenchmarkMetadata(
             name="failing-model",
             creator="test-suite",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=0.01,
             turns=1,
             training_time=1.0,
@@ -317,7 +321,8 @@ async def test_dry_audio_is_reused_from_the_local_cache(tmp_path: Path) -> None:
         metadata=BenchmarkMetadata(
             name="cache-test",
             creator="test-suite",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=5.0,
             turns=1,
             training_time=1.0,
@@ -347,7 +352,8 @@ async def test_concurrent_runs_deduplicate_downloads_across_instances(tmp_path: 
     metadata = BenchmarkMetadata(
         name="concurrent-cache-test",
         creator="test-suite",
-        unique_positions_used=1,
+        training_positions=((0.5,),),
+        training_dry_files=("training.wav",),
         audio_duration_sum=5.0,
         turns=1,
         training_time=1.0,
@@ -390,7 +396,8 @@ async def test_model_wav_output_is_staged_as_pcm24_flac(tmp_path: Path) -> None:
         metadata=BenchmarkMetadata(
             name="flac-upload",
             creator="test-suite",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=0.01,
             turns=1,
             training_time=1.0,
@@ -424,7 +431,8 @@ def test_sync_runner_accepts_a_sync_model_callback(tmp_path: Path) -> None:
         metadata=BenchmarkMetadata(
             name="sync-model",
             creator="test-suite",
-            unique_positions_used=1,
+            training_positions=((0.5,),),
+            training_dry_files=("training.wav",),
             audio_duration_sum=5.0,
             turns=1,
             training_time=1.0,

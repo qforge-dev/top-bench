@@ -65,6 +65,13 @@
     sequenceParts: [...document.querySelectorAll(".sequence-part[data-sequence-index]")],
     sequenceStatus: document.querySelector("#sequence-status"),
     tabs: [...document.querySelectorAll('[role="tab"][data-metric]')],
+    trainingFiles: document.querySelector("#training-files"),
+    trainingFilesEmpty: document.querySelector("#training-files-empty"),
+    trainingPositionsBody: document.querySelector("#training-positions-body"),
+    trainingPositionsEmpty: document.querySelector("#training-positions-empty"),
+    trainingPositionsFrame: document.querySelector("#training-positions-frame"),
+    trainingPositionsHead: document.querySelector("#training-positions-head"),
+    trainingSummary: document.querySelector("#training-summary"),
     waveformChart: document.querySelector("#waveform-chart"),
     waveformLegend: document.querySelector("#waveform-legend"),
     waveformStatus: document.querySelector("#waveform-status"),
@@ -86,6 +93,7 @@
     sequenceIndex: -1,
     sequenceSource: null,
     sequenceTimer: null,
+    trainingProvenance: null,
     waveformCache: new Map(),
     detailSignature: null,
     caseChartSignature: null,
@@ -188,6 +196,81 @@
     list.append(wrapper);
   }
 
+  function renderTrainingProvenance(run) {
+    if (run.training_provenance_included !== false) {
+      state.trainingProvenance = {
+        controlCount: run.amp_control_count,
+        controlNames: run.amp_control_names,
+        files: run.training_dry_files,
+        positions: run.training_positions,
+      };
+    }
+    if (!state.trainingProvenance) return;
+    const positions = Array.isArray(state.trainingProvenance.positions)
+      ? state.trainingProvenance.positions
+      : [];
+    const files = Array.isArray(state.trainingProvenance.files)
+      ? state.trainingProvenance.files
+      : [];
+    const positionLabel = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
+    const fileLabel = `${files.length} dry file${files.length === 1 ? "" : "s"}`;
+    setText(
+      elements.trainingSummary,
+      positions.length || files.length
+        ? `${positionLabel} · ${fileLabel}`
+        : "Not recorded for this legacy run",
+    );
+
+    elements.trainingPositionsHead?.replaceChildren();
+    elements.trainingPositionsBody?.replaceChildren();
+    if (positions.length) {
+      const controlNames = Array.isArray(state.trainingProvenance.controlNames)
+        ? state.trainingProvenance.controlNames
+        : [];
+      const controlCount = Math.max(
+        Number.isInteger(state.trainingProvenance.controlCount)
+          ? state.trainingProvenance.controlCount
+          : 0,
+        ...positions.map((position) => Array.isArray(position) ? position.length : 0),
+      );
+      const headerRow = createElement("tr");
+      const indexHeader = createElement("th", "", "Position");
+      indexHeader.scope = "col";
+      headerRow.append(indexHeader);
+      for (let index = 0; index < controlCount; index += 1) {
+        const header = createElement(
+          "th",
+          "",
+          controlNames[index] || `Control ${String(index + 1).padStart(2, "0")}`,
+        );
+        header.scope = "col";
+        headerRow.append(header);
+      }
+      elements.trainingPositionsHead?.append(headerRow);
+      positions.forEach((position, positionIndex) => {
+        const row = createElement("tr");
+        const rowHeader = createElement("th", "", String(positionIndex + 1).padStart(2, "0"));
+        rowHeader.scope = "row";
+        row.append(rowHeader);
+        for (let index = 0; index < controlCount; index += 1) {
+          row.append(createElement("td", "", formatNumber(position[index], 6)));
+        }
+        elements.trainingPositionsBody?.append(row);
+      });
+    }
+    if (elements.trainingPositionsFrame) elements.trainingPositionsFrame.hidden = !positions.length;
+    if (elements.trainingPositionsEmpty) elements.trainingPositionsEmpty.hidden = Boolean(positions.length);
+
+    elements.trainingFiles?.replaceChildren();
+    for (const fileName of files) {
+      const item = createElement("li");
+      item.append(createElement("code", "", text(fileName)));
+      elements.trainingFiles?.append(item);
+    }
+    if (elements.trainingFiles) elements.trainingFiles.hidden = !files.length;
+    if (elements.trainingFilesEmpty) elements.trainingFilesEmpty.hidden = Boolean(files.length);
+  }
+
   function renderRun(run) {
     if (!run || typeof run !== "object") return;
     setText(elements.runName, run.name || "Untitled model");
@@ -195,6 +278,7 @@
     setText(elements.runCreator, run.creator || "Anonymous");
     setText(elements.runDescription, run.description || "No model description was supplied.");
     setText(elements.runAmp, run.amp_name || run.amp_id || "Unknown amp");
+    renderTrainingProvenance(run);
     if (elements.runStarted) {
       elements.runStarted.textContent = formatStartedAt(run.created_at);
       if (run.created_at) elements.runStarted.dateTime = run.created_at;

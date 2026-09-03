@@ -1116,7 +1116,7 @@ wheels = [
 
 [[package]]
 name = "top-arena"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "packages/top-arena" }
 dependencies = [
     { name = "anyio" },

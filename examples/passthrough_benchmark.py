@@ -50,7 +50,8 @@ def main() -> None:
         run = benchmark.create(
             name=f"passthrough-{datetime.now(UTC):%Y%m%d-%H%M%S}",
             creator=os.environ.get("USER", "anonymous"),
-            unique_positions_used=1,
+            training_positions=((0.5,) * 6,),
+            training_dry_files=("none://untrained-identity-callback",),
             audio_duration_sum=250.0,
             turns=1,
             training_time=0.0,

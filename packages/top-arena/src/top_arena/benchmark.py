@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 from platformdirs import user_cache_path
 
 from top_arena._gateway import HttpBenchmarkGateway
-from top_arena._models import BenchmarkMetadata, PipelineOptions
+from top_arena._models import (
+    BenchmarkMetadata,
+    PipelineOptions,
+    normalize_training_dry_files,
+    normalize_training_positions,
+)
 from top_arena._pipeline import BenchmarkRun
 
 DEFAULT_SERVER_URL = "https://top-arena.labqoat.com"
@@ -19,7 +25,8 @@ def create(
     *,
     name: str,
     creator: str,
-    unique_positions_used: int,
+    training_positions: Sequence[Sequence[float]],
+    training_dry_files: Sequence[str],
     audio_duration_sum: float,
     turns: int,
     training_time: float,
@@ -39,7 +46,8 @@ def create(
     metadata = BenchmarkMetadata(
         name=name,
         creator=creator,
-        unique_positions_used=unique_positions_used,
+        training_positions=normalize_training_positions(training_positions),
+        training_dry_files=normalize_training_dry_files(training_dry_files),
         audio_duration_sum=audio_duration_sum,
         turns=turns,
         training_time=training_time,
@@ -68,7 +76,8 @@ def update_metadata(
     name: str | None = None,
     creator: str | None = None,
     amp_control_count: int | None = None,
-    unique_positions_used: int | None = None,
+    training_positions: Sequence[Sequence[float]] | None = None,
+    training_dry_files: Sequence[str] | None = None,
     audio_duration_sum: float | None = None,
     turns: int | None = None,
     training_time: float | None = None,
@@ -86,7 +95,8 @@ def update_metadata(
                 name=name,
                 creator=creator,
                 amp_control_count=amp_control_count,
-                unique_positions_used=unique_positions_used,
+                training_positions=training_positions,
+                training_dry_files=training_dry_files,
                 audio_duration_sum=audio_duration_sum,
                 turns=turns,
                 training_time=training_time,
@@ -109,7 +119,8 @@ async def update_metadata_async(
     name: str | None = None,
     creator: str | None = None,
     amp_control_count: int | None = None,
-    unique_positions_used: int | None = None,
+    training_positions: Sequence[Sequence[float]] | None = None,
+    training_dry_files: Sequence[str] | None = None,
     audio_duration_sum: float | None = None,
     turns: int | None = None,
     training_time: float | None = None,
@@ -124,7 +135,6 @@ async def update_metadata_async(
             "name": name,
             "creator": creator,
             "amp_control_count": amp_control_count,
-            "unique_positions_used": unique_positions_used,
             "audio_duration_sum": audio_duration_sum,
             "turns": turns,
             "training_time": training_time,
@@ -133,6 +143,21 @@ async def update_metadata_async(
         }.items()
         if value is not None
     }
+    if training_positions is not None:
+        normalized_positions = [
+            list(position) for position in normalize_training_positions(training_positions)
+        ]
+        if amp_control_count is not None and any(
+            len(position) != amp_control_count for position in normalized_positions
+        ):
+            msg = (
+                "each training position must contain exactly "
+                f"{amp_control_count} values in amp-control order"
+            )
+            raise ValueError(msg)
+        updates["training_positions"] = normalized_positions
+    if training_dry_files is not None:
+        updates["training_dry_files"] = list(normalize_training_dry_files(training_dry_files))
     if not updates:
         msg = "at least one metadata field must be supplied"
         raise ValueError(msg)

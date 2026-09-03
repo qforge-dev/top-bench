@@ -203,6 +203,7 @@ def _run_response(
     run: BenchmarkRun,
     *,
     include_cases: bool = True,
+    include_training_provenance: bool = True,
     metrics: dict[str, Any] | None = None,
 ) -> RunResponse:
     return RunResponse(
@@ -213,7 +214,11 @@ def _run_response(
         amp_name=run.amp.name,
         amp_type=run.amp.amp_type,
         amp_control_count=run.amp_control_count_override or len(run.amp.control_names),
+        amp_control_names=run.amp.control_names,
         unique_positions_used=run.unique_positions_used,
+        training_positions=run.training_positions if include_training_provenance else [],
+        training_dry_files=run.training_dry_files if include_training_provenance else [],
+        training_provenance_included=include_training_provenance,
         audio_duration_sum=run.audio_duration_sum,
         turns=run.turns,
         training_time=run.training_time,
@@ -231,17 +236,42 @@ def _run_response(
     )
 
 
-async def _load_run(services: Services, run_id: str) -> BenchmarkRun | None:
+def _validate_training_position_width(
+    positions: list[list[float]],
+    control_count: int,
+) -> None:
+    if positions and any(len(position) != control_count for position in positions):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            (
+                "each training position must contain exactly "
+                f"{control_count} values in amp-control order"
+            ),
+        )
+
+
+async def _load_run(
+    services: Services,
+    run_id: str,
+    *,
+    include_training_provenance: bool = True,
+) -> BenchmarkRun | None:
+    load_options: list[Any] = [
+        joinedload(BenchmarkRun.amp),
+        selectinload(BenchmarkRun.cases).defer(RunCase.analysis),
+    ]
+    if not include_training_provenance:
+        load_options.extend(
+            (
+                defer(BenchmarkRun.training_positions, raiseload=True),
+                defer(BenchmarkRun.training_dry_files, raiseload=True),
+            )
+        )
     async with services.database.session() as session:
         return cast(
             "BenchmarkRun | None",
             await session.scalar(
-                select(BenchmarkRun)
-                .options(
-                    joinedload(BenchmarkRun.amp),
-                    selectinload(BenchmarkRun.cases).defer(RunCase.analysis),
-                )
-                .where(BenchmarkRun.id == run_id)
+                select(BenchmarkRun).options(*load_options).where(BenchmarkRun.id == run_id)
             ),
         )
 
@@ -262,6 +292,18 @@ async def _update_run_metadata(
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
 
             updates = request.model_dump(exclude_unset=True)
+            prospective_control_count = cast(
+                "int | None",
+                updates.get("amp_control_count", run.amp_control_count_override),
+            ) or len(run.amp.control_names)
+            prospective_positions = cast(
+                "list[list[float]]",
+                updates.get("training_positions", run.training_positions),
+            )
+            _validate_training_position_width(
+                prospective_positions,
+                prospective_control_count,
+            )
             changes: dict[str, dict[str, Any]] = {}
             if "amp_control_count" in updates:
                 old_count = run.amp_control_count_override or len(run.amp.control_names)
@@ -278,7 +320,22 @@ async def _update_run_metadata(
                 previous = getattr(run, field)
                 if previous != value:
                     setattr(run, field, value)
-                    changes[field] = {"from": previous, "to": value}
+                    if field in {"training_positions", "training_dry_files"}:
+                        changes[field] = {
+                            "from_count": len(previous),
+                            "to_count": len(value),
+                        }
+                    else:
+                        changes[field] = {"from": previous, "to": value}
+
+            if "training_positions" in updates:
+                new_position_count = len(prospective_positions)
+                if run.unique_positions_used != new_position_count:
+                    changes["unique_positions_used"] = {
+                        "from": run.unique_positions_used,
+                        "to": new_position_count,
+                    }
+                    run.unique_positions_used = new_position_count
 
             if changes:
                 run.updated_at = now_utc()
@@ -297,15 +354,24 @@ async def _update_run_metadata(
 
 
 async def _load_case_locations(
-    services: Services, run_id: str
+    services: Services,
+    run_id: str,
+    *,
+    include_training_provenance: bool = False,
 ) -> tuple[BenchmarkRun | None, list[CaseLocation]]:
+    load_options: list[Any] = [joinedload(BenchmarkRun.amp)]
+    if not include_training_provenance:
+        load_options.extend(
+            (
+                defer(BenchmarkRun.training_positions, raiseload=True),
+                defer(BenchmarkRun.training_dry_files, raiseload=True),
+            )
+        )
     async with services.database.session() as session:
         run = cast(
             "BenchmarkRun | None",
             await session.scalar(
-                select(BenchmarkRun)
-                .options(joinedload(BenchmarkRun.amp))
-                .where(BenchmarkRun.id == run_id)
+                select(BenchmarkRun).options(*load_options).where(BenchmarkRun.id == run_id)
             ),
         )
         if run is None:
@@ -349,6 +415,8 @@ async def _leaderboard_runs(
         .options(
             joinedload(BenchmarkRun.amp),
             defer(BenchmarkRun.metrics, raiseload=True),
+            defer(BenchmarkRun.training_positions, raiseload=True),
+            defer(BenchmarkRun.training_dry_files, raiseload=True),
         )
     )
     if amp_scope == "simple":
@@ -365,6 +433,7 @@ async def _leaderboard_runs(
         _run_response(
             run,
             include_cases=False,
+            include_training_provenance=False,
             metrics=run.leaderboard_metrics,
         )
         for run in runs
@@ -729,10 +798,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         select(BenchmarkCase).where(BenchmarkCase.amp_id == request.amp_id)
                     )
                 ).all()
+                effective_control_count = request.amp_control_count or len(amp.control_names)
+                _validate_training_position_width(
+                    request.training_positions,
+                    effective_control_count,
+                )
                 run_values = request.model_dump(exclude={"amp_control_count"})
                 run = BenchmarkRun(
                     **run_values,
                     amp_control_count_override=request.amp_control_count,
+                    unique_positions_used=len(request.training_positions),
                     total_cases=len(benchmark_cases),
                     completed_cases=0,
                     status="running",
@@ -750,7 +825,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     RunEvent(
                         run_id=run.id,
                         kind="run.created",
-                        payload={"amp_id": request.amp_id, "total_cases": len(benchmark_cases)},
+                        payload={
+                            "amp_id": request.amp_id,
+                            "total_cases": len(benchmark_cases),
+                            "training_positions": len(request.training_positions),
+                            "training_dry_files": len(request.training_dry_files),
+                        },
                     )
                 )
                 response = CreateRunResponse(
@@ -761,10 +841,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except IntegrityError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, "run name already exists") from error
         LOGGER.info(
-            "run.created run_id=%s amp_id=%s cases=%d duration_ms=%.1f",
+            (
+                "run.created run_id=%s amp_id=%s cases=%d training_positions=%d "
+                "training_dry_files=%d duration_ms=%.1f"
+            ),
             response.id,
             request.amp_id,
             response.total_cases,
+            len(request.training_positions),
+            len(request.training_dry_files),
             (time.perf_counter() - started_at) * 1_000,
         )
         return response
@@ -953,17 +1038,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 run.status = "finalizing"
             session.add(RunEvent(run_id=run_id, kind="run.client_finished", payload={}))
         await services.scoring.finalize_if_ready(run_id)
-        value = await _load_run(services, run_id)
+        value = await _load_run(
+            services,
+            run_id,
+            include_training_provenance=False,
+        )
         if value is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
-        return _run_response(value)
+        return _run_response(value, include_training_provenance=False)
 
     @app.get("/api/v1/runs/{run_id}", response_model=RunResponse, tags=["runs"])
-    async def get_run(run_id: str) -> RunResponse:
-        run = await _load_run(services, run_id)
+    async def get_run(
+        run_id: str,
+        *,
+        include_training_provenance: bool = True,
+    ) -> RunResponse:
+        run = await _load_run(
+            services,
+            run_id,
+            include_training_provenance=include_training_provenance,
+        )
         if run is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
-        return _run_response(run)
+        return _run_response(
+            run,
+            include_training_provenance=include_training_provenance,
+        )
 
     @app.patch(
         "/api/v1/runs/{run_id}",
@@ -1017,11 +1117,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["runs"],
     )
     async def case_index(run_id: str) -> RunCaseIndexResponse:
-        run, locations = await _load_case_locations(services, run_id)
+        run, locations = await _load_case_locations(
+            services,
+            run_id,
+            include_training_provenance=True,
+        )
         if run is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
         return RunCaseIndexResponse(
-            run=_run_response(run, include_cases=False),
+            run=_run_response(
+                run,
+                include_cases=False,
+            ),
             cases=[
                 RunCaseIndexItem(
                     case_id=location.case_id,
@@ -1089,7 +1196,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ):
             analysis["nam_points"] = nam_points
         return RunCaseDetailResponse(
-            run=_run_response(run, include_cases=False),
+            run=_run_response(
+                run,
+                include_cases=False,
+                include_training_provenance=False,
+            ),
             case_id=case_id,
             index=zero_based_index + 1,
             total=len(locations),

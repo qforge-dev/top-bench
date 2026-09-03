@@ -79,7 +79,11 @@ from my_model import render_audio
 run = benchmark.create(
     name="super-model-v1",
     creator="your-name",
-    unique_positions_used=1,
+    training_positions=(
+        (0.15, 1.0, 0.35, 0.75, 0.2, 0.9),
+        (0.8, 0.0, 0.6, 0.4, 0.7, 0.85),
+    ),
+    training_dry_files=("training/clean-riff.wav", "training/chords.wav"),
     audio_duration_sum=4_000.0,
     turns=1,
     training_time=5_000.0,
@@ -122,7 +126,7 @@ by timed model wall time.
 Before the candidate starts, a pinned NAM-A2-FULL `.nam` runs directly through the native
 NeuralAmpModelerCore runtime (no ONNX). `nam_a2_speed_ratio` compares candidate speed with
 that same-machine baseline: `1.0` matches NAM-A2 and higher is faster. Absolute realtime
-remains available as secondary context.
+remains the primary displayed speed, with the NAM-A2 percentage shown alongside it.
 
 ## Use the web application
 
@@ -137,7 +141,8 @@ The [Top Arena web application](https://top-arena.labqoat.com) serves three audi
 The leaderboard shows status, aggregate metrics, speed, and the Pareto frontier for
 mean ESR versus positions per control (unique training positions divided by the amp's
 knobs and switches). Lower ESR and fewer positions per control are better. Every model
-links to a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. The selected case is
+links to a lazy-loaded case inspector at `/runs/{run_id}/cases/{case_id}`. Run pages list
+every declared training position and dry-file building block independently. The selected case is
 preserved in copied URLs and browser history, while large audio objects are only loaded
 when playback begins. Interactive API documentation is available at
 [`/docs`](https://top-arena.labqoat.com/docs), and the health endpoint is `/health`.
